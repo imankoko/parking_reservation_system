@@ -8,34 +8,47 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Admin') {
     exit();
 }
 
-// Get selected date from GET, default to today if not set
-$selected_date = isset($_GET['filter_date']) ? $_GET['filter_date'] : date('Y-m-d');
+// --- DATE RANGE LOGIC ---
+$period = isset($_GET['period']) ? $_GET['period'] : 'today';
 
-// 1. Fetch Stats
+if ($period == 'today') {
+    $start_date = date('Y-m-d');
+    $end_date = date('Y-m-d');
+} elseif ($period == 'mtd') {
+    $start_date = date('Y-m-01'); 
+    $end_date = date('Y-m-d');
+} elseif ($period == 'last30') {
+    $start_date = date('Y-m-d', strtotime('-30 days'));
+    $end_date = date('Y-m-d');
+} else {
+    $start_date = isset($_GET['start_date']) ? $_GET['start_date'] : date('Y-m-d');
+    $end_date = isset($_GET['end_date']) ? $_GET['end_date'] : date('Y-m-d');
+}
+
+// 1. Fetch Global Stats
 $user_count = pg_fetch_result(pg_query($conn, "SELECT COUNT(*) FROM tbl_user"), 0, 0);
 $available_slots = pg_fetch_result(pg_query($conn, "SELECT COUNT(*) FROM tbl_parking_listing WHERE status = 'Available'"), 0, 0);
 $total_slots = pg_fetch_result(pg_query($conn, "SELECT COUNT(*) FROM tbl_parking_listing"), 0, 0);
 
-// 2. Revenue Calculation (Filtered by Date)
+// 2. Revenue Calculation (Range)
 $revenue_query = "SELECT SUM((EXTRACT(HOUR FROM (b.end_time - b.start_time))) * p.price) as total_rev 
                   FROM tbl_booking b 
                   JOIN tbl_parking_listing p ON b.parking_id = p.parking_id
-                  WHERE b.booking_date = $1";
-$revenue_res = pg_query_params($conn, $revenue_query, array($selected_date));
+                  WHERE b.booking_date BETWEEN $1 AND $2";
+$revenue_res = pg_query_params($conn, $revenue_query, array($start_date, $end_date));
 $total_revenue = pg_fetch_result($revenue_res, 0, 0) ?: 0;
 
-// 3. Activity Query (Crucial for the table below)
+// 3. Activity Query (Range)
 $query_recent = "SELECT b.booking_id, b.booking_date, u.full_name, p.slot_number, p.price as hourly_rate, 
                   b.plate_number, b.phone_number, b.start_time, b.end_time,
                   (EXTRACT(HOUR FROM (b.end_time - b.start_time))) as duration
                   FROM tbl_booking b 
                   JOIN tbl_user u ON b.user_id = u.user_id 
                   JOIN tbl_parking_listing p ON b.parking_id = p.parking_id 
-                  WHERE b.booking_date = $1
-                  ORDER BY b.start_time DESC";
+                  WHERE b.booking_date BETWEEN $1 AND $2
+                  ORDER BY b.booking_date DESC, b.start_time DESC";
 
-// Execute query and store result in $recent_bookings
-$recent_bookings = pg_query_params($conn, $query_recent, array($selected_date));
+$recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end_date));
 ?>
 
 <!DOCTYPE html>
@@ -45,9 +58,8 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($selected_date));
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; margin: 0; padding-bottom: 80px; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; margin: 0; padding-bottom: 150px; } /* Added padding for floating buttons */
         
-        /* Faded Yellow Header */
         .header {
             background: linear-gradient(to bottom, #d4bc44, #ffffff);
             padding: 30px 20px; display: flex; align-items: center; gap: 15px;
@@ -56,14 +68,11 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($selected_date));
         .header-text h2 { margin: 0; font-size: 1.4rem; color: #000; }
 
         .main-content { padding: 20px; }
-        .filter-container { background: #f9f9f9; padding: 15px; margin-bottom: 20px; border-radius: 12px; }
         
-        /* 2x2 Stats Grid for Mobile */
+        .filter-container { background: #f9f9f9; padding: 15px; margin-bottom: 20px; border-radius: 12px; border: 1px solid #d4bc44; }
+        
         .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 25px; }
-        
-        @media (min-width: 768px) {
-            .stats-grid { grid-template-columns: repeat(4, 1fr); gap: 20px; }
-        }
+        @media (min-width: 768px) { .stats-grid { grid-template-columns: repeat(4, 1fr); gap: 20px; } }
 
         .stat-card { 
             background: #fff; padding: 20px 10px; text-align: center; 
@@ -73,17 +82,31 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($selected_date));
         .stat-card p { margin: 0; font-size: 0.8em; font-weight: bold; color: #666; text-transform: uppercase; }
         .stat-card h3 { margin: 5px 0 0 0; font-size: 1.5em; color: #000; }
 
-        /* Table Design */
-        .table-container { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); overflow-x: auto; }
+        .table-container { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); overflow-x: auto; margin-bottom: 20px; }
         table { width: 100%; border-collapse: collapse; min-width: 500px; }
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
         th { background: #f8f9fa; color: #888; text-transform: uppercase; font-size: 11px; }
         
-        /* Bottom Navigation Bar */
+        /* BOTTOM ACTION BAR (STICKY) */
+        .sticky-actions {
+            position: fixed;
+            bottom: 65px; /* Sits right above bottom-nav */
+            left: 0;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px 0;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.08);
+            z-index: 999;
+            backdrop-filter: blur(8px);
+        }
+
         .bottom-nav {
             position: fixed; bottom: 0; width: 100%; background: #fff;
             display: flex; justify-content: space-around; padding: 10px 0;
-            border-top: 1px solid #eee; box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            border-top: 1px solid #eee; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); z-index: 1000;
         }
         .nav-item { text-align: center; text-decoration: none; color: #888; font-size: 0.8rem; flex: 1; }
         .nav-item i { font-size: 1.5rem; display: block; margin-bottom: 2px; }
@@ -94,14 +117,26 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($selected_date));
 
     <div class="header">
         <img src="logo.png" class="logo-img" alt="Logo">
-        <div class="header-text"><h2>Administrator<br>Dashboard</h2></div>
+        <div class="header-text"><h2>Administrator Dashboard</h2></div>
     </div>
 
     <div class="main-content">
         <div class="filter-container">
-            <form method="GET" style="display: flex; gap: 5px; align-items: center;">
-                <input type="date" name="filter_date" value="<?php echo $selected_date; ?>" style="padding: 8px; border-radius: 5px; border: 1px solid #ddd; flex: 1;">
-                <button type="submit" style="background:#d4bc44; border:none; padding: 10px; border-radius: 5px; font-weight:bold; cursor:pointer;">Filter</button>
+            <form method="GET" action="admin_dashboard.php">
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <select name="period" id="periodSelect" style="padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                        <option value="today" <?php if($period == 'today') echo 'selected'; ?>>Today Only</option>
+                        <option value="mtd" <?php if($period == 'mtd') echo 'selected'; ?>>Month to Date</option>
+                        <option value="last30" <?php if($period == 'last30') echo 'selected'; ?>>Last 30 Days</option>
+                        <option value="custom" <?php if($period == 'custom') echo 'selected'; ?>>Custom Range</option>
+                    </select>
+
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="date" name="start_date" id="startDate" value="<?php echo $start_date; ?>" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                        <input type="date" name="end_date" id="endDate" value="<?php echo $end_date; ?>" style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #ddd;">
+                        <button type="submit" style="background:#d4bc44; border:none; padding: 10px 15px; border-radius: 8px; font-weight:bold; cursor:pointer;">APPLY</button>
+                    </div>
+                </div>
             </form>
         </div>
 
@@ -113,16 +148,14 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($selected_date));
         </div>
 
         <div class="table-container">
-            <h3 style="margin: 0 0 10px 0; font-size: 1rem;">Activity Log: <?php echo date('d M Y', strtotime($selected_date)); ?></h3>
+            <h3 style="margin: 0 0 10px 0; font-size: 1rem;">
+                Activity Log: 
+                <?php echo ($start_date == $end_date) ? date('d M Y', strtotime($start_date)) : date('d M', strtotime($start_date)) . " - " . date('d M Y', strtotime($end_date)); ?>
+            </h3>
             <table>
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>Driver</th>
-                        <th>Slot</th>
-                        <th>Time</th>
-                        <th>Duration</th>
-                        <th>Fee</th>
+                        <th>ID</th><th>Driver</th><th>Slot</th><th>Time</th><th>Duration</th><th>Fee</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -138,15 +171,20 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($selected_date));
                         </tr>
                         <?php endwhile; ?>
                     <?php else: ?>
-                        <tr><td colspan="6" style="text-align:center; padding: 20px; color: #888;">No records found for this date.</td></tr>
+                        <tr><td colspan="6" style="text-align:center; padding: 20px; color: #888;">No records found. Click APPLY to refresh.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
         </div>
+    </div>
 
-        <div style="text-align: center; margin-top: 30px;">
-            <a href="generate_report.php?date=<?php echo $selected_date; ?>" target="_blank" style="display:inline-block; background:#333; color:white; padding:15px 30px; text-decoration:none; border-radius:10px; font-weight:bold;">📊 Generate Report</a>
-        </div>
+    <div class="sticky-actions">
+        <a href="admin_manage_slots.php" style="background:#d4bc44; color:black; padding:12px 20px; text-decoration:none; border-radius:10px; font-weight:bold; font-size: 13px;">
+            <i class="fa-solid fa-gear"></i> Manage Slots
+        </a>
+        <a href="generate_report.php?start=<?php echo $start_date; ?>&end=<?php echo $end_date; ?>" target="_blank" style="background:#333; color:white; padding:12px 20px; text-decoration:none; border-radius:10px; font-weight:bold; font-size: 13px;">
+            <i class="fa-solid fa-file-pdf"></i> Report
+        </a>
     </div>
 
     <nav class="bottom-nav">
@@ -157,5 +195,25 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($selected_date));
         </a>
     </nav>
 
+    <script>
+    document.getElementById('periodSelect').addEventListener('change', function() {
+        const startInput = document.getElementById('startDate');
+        const endInput = document.getElementById('endDate');
+        const today = new Date().toISOString().split('T')[0];
+        
+        if (this.value === 'today') {
+            startInput.value = today;
+            endInput.value = today;
+        } else if (this.value === 'mtd') {
+            const firstDay = new Date(); firstDay.setDate(1);
+            startInput.value = firstDay.toISOString().split('T')[0];
+            endInput.value = today;
+        } else if (this.value === 'last30') {
+            const last30 = new Date(); last30.setDate(last30.getDate() - 30);
+            startInput.value = last30.toISOString().split('T')[0];
+            endInput.value = today;
+        }
+    });
+    </script>
 </body>
 </html>

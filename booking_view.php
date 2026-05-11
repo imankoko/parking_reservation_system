@@ -2,13 +2,11 @@
 session_start();
 include 'db_connect.php';
 
-// Security check: Only Drivers can book slots
 if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Driver') {
     header("Location: login_view.php");
     exit();
 }
 
-// Get the parking ID from the URL
 if (isset($_GET['id'])) {
     $parking_id = $_GET['id'];
 } else {
@@ -16,14 +14,11 @@ if (isset($_GET['id'])) {
     exit();
 }
 
-// Fetch slot details to display on the confirmation page
-$query = "SELECT * FROM tbl_parking_listing WHERE parking_id = $1";
+$query  = "SELECT * FROM tbl_parking_listing WHERE parking_id = $1";
 $result = pg_query_params($conn, $query, array($parking_id));
-$slot = pg_fetch_assoc($result);
+$slot   = pg_fetch_assoc($result);
 
-if (!$slot) {
-    die("Parking slot not found.");
-}
+if (!$slot) die("Parking slot not found.");
 ?>
 
 <!DOCTYPE html>
@@ -34,42 +29,20 @@ if (!$slot) {
     <link rel="stylesheet" href="style.css">
     <style>
         body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f8f9fa; margin: 0; }
-        
-        /* Consistent Square Button Navigation */
-        .nav-container { 
-            display: flex; 
-            justify-content: space-between; 
-            padding: 15px; 
-            background: #fff; 
-            border-bottom: 2px solid #FFD700; 
-            align-items: center;
-        }
-        .btn-sq {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 100px;
-            height: 40px;
-            text-decoration: none;
-            font-weight: bold;
-            border-radius: 0px;
-            text-transform: uppercase;
-            font-size: 13px;
-            color: white !important;
-        }
-        .btn-back-sq { background: #666; }
-        .btn-logout-sq { background: #dc3545; }
-
-        .container { padding: 20px; max-width: 500px; margin: auto; }
-        .slot-info { background: #FFD700; padding: 20px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .booking-form { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        
-        label { font-weight: bold; display: block; margin-bottom: 5px; color: #333; }
-        input, select { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
-        
-        .calc-box { background: #fdfdfd; padding: 15px; border-radius: 8px; border: 1px dashed #FFD700; text-align: center; margin-bottom: 20px; }
-        .btn-confirm { width: 100%; padding: 15px; background: #333; color: white; border: none; font-weight: bold; border-radius: 8px; font-size: 18px; cursor: pointer; }
-        .price-text { font-size: 1.3em; color: #27ae60; font-weight: bold; }
+        .nav-container { display:flex; justify-content:space-between; padding:15px; background:#fff; border-bottom:2px solid #FFD700; align-items:center; }
+        .btn-sq { display:inline-flex; align-items:center; justify-content:center; width:100px; height:40px; text-decoration:none; font-weight:bold; border-radius:0; text-transform:uppercase; font-size:13px; color:white !important; }
+        .btn-back-sq { background:#666; }
+        .btn-logout-sq { background:#dc3545; }
+        .container { padding:20px; max-width:500px; margin:auto; }
+        .slot-info { background:#FFD700; padding:20px; border-radius:12px; margin-bottom:20px; box-shadow:0 4px 6px rgba(0,0,0,0.1); }
+        .booking-form { background:#fff; padding:20px; border-radius:12px; box-shadow:0 4px 6px rgba(0,0,0,0.1); }
+        label { font-weight:bold; display:block; margin-bottom:5px; color:#333; }
+        input, select { width:100%; padding:12px; margin-bottom:15px; border:1px solid #ccc; border-radius:8px; box-sizing:border-box; font-size:16px; }
+        .calc-box { background:#fdfdfd; padding:15px; border-radius:8px; border:1px dashed #FFD700; text-align:center; margin-bottom:20px; }
+        .btn-confirm { width:100%; padding:15px; background:#333; color:white; border:none; font-weight:bold; border-radius:8px; font-size:18px; cursor:pointer; }
+        .price-text { font-size:1.3em; color:#27ae60; font-weight:bold; }
+        /* FIX: Alert shown if user tries to submit without selecting a start time first */
+        .warn-msg { background:#fff3cd; color:#856404; border:1px solid #ffc107; padding:10px; border-radius:8px; margin-bottom:15px; font-size:0.9rem; display:none; }
     </style>
 </head>
 <body>
@@ -81,23 +54,24 @@ if (!$slot) {
 
     <div class="container">
         <div class="slot-info">
-            <h2 style="margin:0;">Slot: <?php echo $slot['slot_number']; ?></h2>
-            <p style="margin:5px 0;"><?php echo $slot['location']; ?></p>
-            <p style="margin:0;">Rate: <strong>RM <?php echo number_format($slot['price'], 2); ?>/hour</strong></p>
+            <h2 style="margin:0;">Slot: <?php echo htmlspecialchars($slot['slot_number']); ?></h2>
+            <p style="margin:5px 0;"><?php echo htmlspecialchars($slot['location']); ?></p>
+            <p style="margin:0;">Rate: <strong>RM <?php echo number_format($slot['price'],2); ?>/hour</strong></p>
         </div>
 
         <div class="booking-form">
-            <form action="payment_view.php" method="POST" id="bookingForm">
-                <input type="hidden" name="parking_id" value="<?php echo $slot['parking_id']; ?>">
+            <!-- FIX: Changed action from payment_view.php — end_time must be calculated FIRST -->
+            <form action="payment_view.php" method="POST" id="bookingForm" onsubmit="return validateForm()">
+                <input type="hidden" name="parking_id"  value="<?php echo $slot['parking_id']; ?>">
                 <input type="hidden" name="hourly_rate" id="hourlyRate" value="<?php echo $slot['price']; ?>">
-                
+
                 <label>Plate Number:</label>
-                <input type="text" name="plate_number" placeholder="ABC 1234" required style="text-transform: uppercase;">
+                <input type="text" name="plate_number" placeholder="ABC 1234" required style="text-transform:uppercase;">
 
                 <label>Phone Number:</label>
                 <input type="tel" name="phone_number" placeholder="01XXXXXXXX" required>
 
-                <div style="display: flex; gap: 10px;">
+                <div style="display:flex; gap:10px;">
                     <div style="flex:1;">
                         <label>Start Time:</label>
                         <input type="time" name="start_time" id="startTime" required onchange="calculateBooking()">
@@ -113,11 +87,16 @@ if (!$slot) {
                     </div>
                 </div>
 
+                <!-- FIX: end_time hidden field — populated by calculateBooking() before form submits -->
                 <input type="hidden" name="end_time" id="endTime">
+
+                <div id="warnMsg" class="warn-msg">
+                    ⚠️ Please select a <strong>Start Time</strong> first so the end time can be calculated.
+                </div>
 
                 <div class="calc-box">
                     <div>Ends at: <strong id="endTimeDisplay">--:--</strong></div>
-                    <div style="margin-top: 8px;">Total to Pay: <span class="price-text" id="totalPriceDisplay">RM 0.00</span></div>
+                    <div style="margin-top:8px;">Total to Pay: <span class="price-text" id="totalPriceDisplay">RM 0.00</span></div>
                 </div>
 
                 <button type="submit" class="btn-confirm">Confirm Booking & Pay Now</button>
@@ -125,36 +104,44 @@ if (!$slot) {
         </div>
     </div>
 
-    <script>
-    /**
-     * Calculates the end time and total price based on duration and rate
-     */
+<script>
     function calculateBooking() {
         const startTimeInput = document.getElementById('startTime').value;
-        const duration = parseInt(document.getElementById('duration').value);
-        const rate = parseFloat(document.getElementById('hourlyRate').value);
-        
+        const duration       = parseInt(document.getElementById('duration').value);
+        const rate           = parseFloat(document.getElementById('hourlyRate').value);
+
         if (startTimeInput) {
-            // Calculate End Time Logic
             const [hours, minutes] = startTimeInput.split(':');
             let date = new Date();
             date.setHours(parseInt(hours));
             date.setMinutes(parseInt(minutes));
+            date.setSeconds(0);
             date.setHours(date.getHours() + duration);
 
-            let endH = date.getHours().toString().padStart(2, '0');
-            let endM = date.getMinutes().toString().padStart(2, '0');
-            let finalEndTime = endH + ':' + endM;
+            const endH = date.getHours().toString().padStart(2, '0');
+            const endM = date.getMinutes().toString().padStart(2, '0');
+            const finalEndTime = endH + ':' + endM;
 
-            // Update UI and Hidden Inputs
-            document.getElementById('endTime').value = finalEndTime;
+            // Populate hidden field AND display
+            document.getElementById('endTime').value        = finalEndTime;
             document.getElementById('endTimeDisplay').innerText = finalEndTime;
+            document.getElementById('totalPriceDisplay').innerText = 'RM ' + (rate * duration).toFixed(2);
 
-            // Calculate Price based on hourly rate
-            let total = rate * duration;
-            document.getElementById('totalPriceDisplay').innerText = 'RM ' + total.toFixed(2);
+            // Hide warning if it was shown
+            document.getElementById('warnMsg').style.display = 'none';
         }
     }
-    </script>
+
+    // FIX: Block form submission if end_time was never calculated (user skipped start time)
+    function validateForm() {
+        const endTime = document.getElementById('endTime').value;
+        if (!endTime || endTime.trim() === '') {
+            document.getElementById('warnMsg').style.display = 'block';
+            document.getElementById('startTime').focus();
+            return false; // stops form submission
+        }
+        return true;
+    }
+</script>
 </body>
 </html>

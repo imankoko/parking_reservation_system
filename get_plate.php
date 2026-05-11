@@ -1,26 +1,44 @@
 <?php
+/**
+ * get_plate.php
+ * This file provides the current plate number of a specific slot to the ESP32.
+ * It ensures that the hardware only shows a plate if the spot is 'Occupied'.
+ */
+
+// Include database connection
 include 'db_connect.php';
-date_default_timezone_set('Asia/Kuala_Lumpur');
 
-$current_date = date('Y-m-d');
-$current_time = date('H:i:s');
+// ob_clean prevents any accidental whitespace or HTML from being sent to the ESP32
+ob_clean(); 
 
-// Only fetch the plate if the slot is ACTIVE and the time is CURRENT
-$query = "SELECT b.plate_number 
-          FROM tbl_booking b
-          JOIN tbl_parking_listing p ON b.parking_id = p.parking_id
-          WHERE p.slot_number = 'A01' 
-          AND p.status != 'Inactive'
-          AND b.booking_status = 'Confirmed'
-          AND b.booking_date = $1
-          AND $2 BETWEEN b.start_time AND b.end_time
-          LIMIT 1";
+/**
+ * We target Slot A01 specifically for your hardware unit.
+ * ILIKE %A01% is used to avoid issues with hidden spaces in the database.
+ */
+$query = "SELECT current_plate, status FROM tbl_parking_listing WHERE slot_number ILIKE '%A01%' LIMIT 1";
+$result = pg_query($conn, $query);
 
-$result = pg_query_params($conn, $query, array($current_date, $current_time));
+if ($result && $row = pg_fetch_assoc($result)) {
+    // Trim values to remove any invisible characters
+    $status = trim($row['status']);
+    $plate = trim($row['current_plate']);
 
-if ($row = pg_fetch_assoc($result)) {
-    echo $row['plate_number'];
+    /**
+     * LOGIC: 
+     * 1. Status must be 'Occupied' (matches payment_success.php).
+     * 2. current_plate must not be empty.
+     */
+    if (strcasecmp($status, 'Occupied') == 0 && !empty($plate)) {
+        // Send ONLY the plate number text to the Arduino
+        echo $plate; 
+    } else {
+        // If the spot is Available or Booked but not yet 'Occupied'
+        echo "VACANT"; 
+    }
 } else {
-    echo "VACANT"; // This clears your LCD
+    // Fallback if the slot A01 does not exist in the database
+    echo "VACANT";
 }
-?>
+
+// Exit to ensure no extra characters or newlines are appended to the response
+exit();

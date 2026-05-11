@@ -69,17 +69,17 @@ $booking_id = $_GET['booking_id'];
         <p>Follow the map to reach The Summit Batu Pahat</p>
     </div>
 
-    <div class="map-wrapper">
-       <iframe 
-    width="100%" 
-    height="100%" 
-    style="border:0;" 
-    loading="lazy" 
-    allowfullscreen 
-    referrerpolicy="no-referrer-when-downgrade" 
-    src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3988.421528659102!2d102.93033507438493!3d1.8540843981287664!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x31d0590059b581e1%3A0xc3f3b9278917d59!2sThe%20Summit%20Batu%20Pahat!5e0!3m2!1sen!2smy!4v1710137171432!5m2!1sen!2smy">
-</iframe>
-    </div>
+    <div class="map-container">
+    <iframe 
+        width="100%" 
+        height="100%" 
+        style="border:0;" 
+        loading="lazy" 
+        allowfullscreen 
+        referrerpolicy="no-referrer-when-downgrade" 
+        src="https://maps.google.com/maps?q=The%20Summit%20Batu%20Pahat&t=&z=15&ie=UTF8&iwloc=&output=embed">
+    </iframe>
+</div>
 
     <div class="support-card">
         <h3 style="margin:0; color: #cc0000; font-size: 1.1rem;">Problem with your spot?</h3>

@@ -11,20 +11,19 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $email = $_POST['email'];
     $password = $_POST['password'];
 
-    // 2. Validate Credentials 
-    // Note: If you use password hashing in registration, use password_verify() instead
     $query = "SELECT * FROM tbl_user WHERE email = $1 AND password = $2";
     $result = pg_query_params($conn, $query, array($email, $password));
 
     if ($result && pg_num_rows($result) > 0) {
         $user = pg_fetch_assoc($result);
         
-        // 3. Set Session data
         $_SESSION['user_id'] = $user['user_id'];
         $_SESSION['role'] = $user['role'];
-        $_SESSION['full_name'] = $user['full_name']; // Fixed to match typical column naming
+        $_SESSION['full_name'] = $user['full_name'];
 
-        // 4. Role-Based Redirection 
+        // --- NEW LINE ADDED HERE ---
+        $_SESSION['login_success'] = "Welcome back, " . $user['full_name'] . "!";
+
         if ($user['role'] == 'Admin') {
             header("Location: admin_dashboard.php");
         } elseif ($user['role'] == 'Lister') {
@@ -34,7 +33,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
         exit();
     } else {
-        // Set error to true if login fails
         $error = true;
     }
 }
