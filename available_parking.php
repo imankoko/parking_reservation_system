@@ -11,16 +11,33 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Driver') {
 $full_name = $_SESSION['full_name'];
 $user_id = $_SESSION['user_id'];
 
-// Normalize selected inputs to strip white spaces
-$selected_branch = isset($_GET['branch']) ? trim($_GET['branch']) : 'Batu Pahat';
+// --- AUTOMATED GPS BOUNDING DETECTION (PRIORITIZED) ---
 $selected_zone = isset($_GET['zone']) ? trim($_GET['zone']) : 'All';
+$selected_branch = '';
+
+// 1. Check if GPS tokens are passed via browser location metadata first
+if (isset($_GET['lat']) && isset($_GET['lng'])) {
+    $lat = floatval($_GET['lat']);
+    $lng = floatval($_GET['lng']);
+    
+    // Bounding Box Lookup
+    if ($lat > 1.95 && $lat < 2.10 && $lng > 103.20 && $lng < 103.45) {
+        $selected_branch = 'Kluang';
+    } else {
+        $selected_branch = 'Batu Pahat';
+    }
+} 
+
+// 2. Fallback: If no GPS data is present in the URL, check if a manual branch parameter was passed
+if (empty($selected_branch)) {
+    $selected_branch = isset($_GET['branch']) ? trim($_GET['branch']) : 'Batu Pahat';
+}
 
 // Force connection to stay localized on Malaysian Time
 pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
 date_default_timezone_set('Asia/Kuala_Lumpur');
 
 // --- BULLETPROOF FETCH ENGINE CORE ---
-// Attempt 1: Try matching the branch parameter exactly
 $query = "SELECT DISTINCT ON (slot_number) * FROM tbl_parking_listing 
           WHERE TRIM(BOTH FROM UPPER(branch)) LIKE $1 
           AND TRIM(BOTH FROM UPPER(status)) != 'INACTIVE'";
@@ -33,8 +50,7 @@ if ($selected_zone !== 'All') {
     $result = pg_query_params($conn, $query, array("%" . strtoupper($selected_branch) . "%"));
 }
 
-// FALLBACK ENGINE: If the branch filter returned 0 rows due to a text mismatch, 
-// fetch ALL active slots so your map NEVER appears blank during the demo!
+// FALLBACK ENGINE: If the branch filter returned 0 rows, show all active slots
 if (!$result || pg_num_rows($result) === 0) {
     $query = "SELECT DISTINCT ON (slot_number) * FROM tbl_parking_listing 
               WHERE TRIM(BOTH FROM UPPER(status)) != 'INACTIVE'";
@@ -47,7 +63,7 @@ if (!$result || pg_num_rows($result) === 0) {
     }
 }
 
-// --- 2. COUNT TOTAL VACANT SLOTS BASED ON SELECTION ---
+// --- 2. COUNT TOTAL VACANT SLOTS ---
 $count_query = "SELECT COUNT(DISTINCT slot_number) FROM tbl_parking_listing 
                 WHERE TRIM(BOTH FROM UPPER(status)) = 'AVAILABLE'";
 if ($selected_zone !== 'All') {
@@ -257,6 +273,24 @@ if (mapImgEl) {
 }
 document.addEventListener("DOMContentLoaded", recalculateMapAspectRatios);
 window.addEventListener('load', recalculateMapAspectRatios);
+
+// --- PRIORITY GEOLOCATION OVERRIDE ENGINE ---
+const urlParams = new URLSearchParams(window.location.search);
+
+if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(position) {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        
+        const currentLat = parseFloat(urlParams.get('lat'));
+        const currentLng = parseFloat(urlParams.get('lng'));
+
+        // Force a page redirect to pass fresh sensors data to PHP if coordinates drift
+        if (currentLat !== lat || currentLng !== lng) {
+            window.location.href = `available_parking.php?lat=${lat}&lng=${lng}&zone=${urlParams.get('zone') || 'All'}`;
+        }
+    });
+}
 </script>
 </body>
 </html>
