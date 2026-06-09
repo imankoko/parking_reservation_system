@@ -19,11 +19,11 @@ if ($period == 'today') {
     // SMART MIDNIGHT BRIDGE: If checking between 12 AM and 6 AM, include yesterday in the 'Today' view
     $current_hour = (int)date('G');
     if ($current_hour >= 0 && $current_hour < 6) {
-        $start_date = date('Y-m-d', strtotime('-1 day')); // Includes June 8
+        $start_date = date('Y-m-d', strtotime('-1 day')); 
     } else {
         $start_date = date('Y-m-d');
     }
-    $end_date = date('Y-m-d'); // June 9
+    $end_date = date('Y-m-d'); 
 } elseif ($period == 'mtd') {
     $start_date = date('Y-m-01'); 
     $end_date = date('Y-m-d');
@@ -40,16 +40,16 @@ $user_count = pg_fetch_result(pg_query($conn, "SELECT COUNT(*) FROM tbl_user"), 
 $available_slots = pg_fetch_result(pg_query($conn, "SELECT COUNT(*) FROM tbl_parking_listing WHERE status = 'Available'"), 0, 0);
 $total_slots = pg_fetch_result(pg_query($conn, "SELECT COUNT(*) FROM tbl_parking_listing"), 0, 0);
 
-// 2. Revenue Calculation (Range)
+// 2. Revenue Calculation (Range) - FIXED: Now includes 'Cancelled' since they paid before canceling
 $revenue_query = "SELECT SUM(GREATEST(1, EXTRACT(HOUR FROM ((b.booking_date + b.end_time) - (b.booking_date + b.start_time)))) * p.price) as total_rev 
                   FROM tbl_booking b 
                   JOIN tbl_parking_listing p ON b.parking_id = p.parking_id
                   WHERE b.booking_date::date BETWEEN $1 AND $2
-                  AND b.booking_status IN ('Confirmed', 'Occupied', 'Completed')";
+                  AND b.booking_status IN ('Confirmed', 'Occupied', 'Completed', 'Cancelled')";
 $revenue_res = pg_query_params($conn, $revenue_query, array($start_date, $end_date));
 $total_revenue = pg_fetch_result($revenue_res, 0, 0) ?: 0;
 
-// 3. Activity Query (Range)
+// 3. Activity Query (Range) - FIXED: Included 'Cancelled' status in the lookup filter
 $query_recent = "SELECT b.booking_id, b.booking_date, u.full_name, p.slot_number, p.price as hourly_rate, 
                   b.plate_number, b.phone_number, b.start_time, b.end_time, b.booking_status,
                   GREATEST(1, EXTRACT(HOUR FROM ((b.booking_date + b.end_time) - (b.booking_date + b.start_time)))) as duration
@@ -57,7 +57,7 @@ $query_recent = "SELECT b.booking_id, b.booking_date, u.full_name, p.slot_number
                   JOIN tbl_user u ON b.user_id = u.user_id 
                   JOIN tbl_parking_listing p ON b.parking_id = p.parking_id 
                   WHERE b.booking_date::date BETWEEN $1 AND $2
-                  AND b.booking_status IN ('Confirmed', 'Occupied', 'Completed')
+                  AND b.booking_status IN ('Confirmed', 'Occupied', 'Completed', 'Cancelled')
                   ORDER BY b.booking_id DESC, b.booking_date DESC, b.start_time DESC";
 
 $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end_date));
@@ -100,10 +100,11 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
         th { background: #f8f9fa; color: #888; text-transform: uppercase; font-size: 11px; }
         
         /* Interactive Status Tag Styles */
-        .status-badge { padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+        .status-badge { padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; text-transform: uppercase; display: inline-block; }
         .badge-confirmed { background: #fef3c7; color: #d97706; }
         .badge-occupied { background: #dbeafe; color: #2563eb; }
         .badge-completed { background: #d1fae5; color: #059669; }
+        .badge-cancelled { background: #fee2e2; color: #dc3545; }
 
         /* BOTTOM ACTION BAR (STICKY) */
         .sticky-actions {
@@ -190,6 +191,7 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
                                 $status = $row['booking_status'];
                                 if ($status === 'Confirmed') echo '<span class="status-badge badge-confirmed">Confirmed</span>';
                                 elseif ($status === 'Occupied') echo '<span class="status-badge badge-occupied">Occupied</span>';
+                                elseif ($status === 'Cancelled') echo '<span class="status-badge badge-cancelled">Cancelled</span>';
                                 else echo '<span class="status-badge badge-completed">Completed</span>';
                                 ?>
                             </td>
