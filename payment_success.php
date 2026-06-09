@@ -18,7 +18,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $end_time     = $_POST['end_time'];
     $booking_date = date('Y-m-d');
 
-    // Insert booking with start_time and end_time from the booking form
+    // Force PostgreSQL time zone configuration alignment for this tracking transaction
+    pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
+
+    // Insert booking safely matching dashboard check requirements
     $query = "INSERT INTO tbl_booking (user_id, parking_id, plate_number, phone_number, start_time, end_time, booking_date, booking_status) 
               VALUES ($1, $2, $3, $4, $5, $6, $7, 'Confirmed') RETURNING booking_id";
     $params = array($user_id, $parking_id, $plate_number, $phone_number, $start_time, $end_time, $booking_date);
@@ -28,16 +31,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $row = pg_fetch_assoc($result);
         $new_booking_id = $row['booking_id'];
 
-        // FIX: Changed 'Reserved' → 'Booked' so the dashboard query finds it correctly.
-        // The driver_dashboard timer query looks for booking_status = 'Confirmed' (tbl_booking)
-        // and displays Cancel unless slot status = 'Occupied'. 'Reserved' was an unknown status
-        // that caused the Cancel button to disappear entirely.
+        // Synchronize state markers perfectly for active dashboard listeners
         pg_query_params($conn,
             "UPDATE tbl_parking_listing SET status = 'Booked', current_plate = $1 WHERE parking_id = $2",
             array($plate_number, $parking_id)
         );
     } else {
-        die("Database Error: " . pg_last_error($conn));
+        die("Database Sync Error Trace: " . pg_last_error($conn));
     }
 }
 ?>
@@ -59,7 +59,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <div class="success-card">
         <i class="fa-solid fa-circle-check" style="font-size:80px; color:#2ecc71;"></i>
         <h2>Payment Successful!</h2>
-        <p>Booking ID: <strong>MYSPOT-B<?php echo $new_booking_id; ?></strong></p>
+        <p>Booking ID: <strong>MYSPOT-B<?php echo htmlspecialchars($new_booking_id); ?></strong></p>
         <a href="navigation_view.php?booking_id=<?php echo $new_booking_id; ?>" class="btn-proceed">Proceed to Navigation</a>
         <a href="driver_dashboard.php" class="btn-secondary">Go to Dashboard</a>
     </div>

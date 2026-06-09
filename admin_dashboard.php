@@ -8,12 +8,22 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Admin') {
     exit();
 }
 
+// Enforce strict Malaysian Time localization to lock down midnight date slips
+date_default_timezone_set('Asia/Kuala_Lumpur');
+pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
+
 // --- DATE RANGE LOGIC ---
 $period = isset($_GET['period']) ? $_GET['period'] : 'today';
 
 if ($period == 'today') {
-    $start_date = date('Y-m-d');
-    $end_date = date('Y-m-d');
+    // SMART MIDNIGHT BRIDGE: If checking between 12 AM and 6 AM, include yesterday in the 'Today' view
+    $current_hour = (int)date('G');
+    if ($current_hour >= 0 && $current_hour < 6) {
+        $start_date = date('Y-m-d', strtotime('-1 day')); // Includes June 8
+    } else {
+        $start_date = date('Y-m-d');
+    }
+    $end_date = date('Y-m-d'); // June 9
 } elseif ($period == 'mtd') {
     $start_date = date('Y-m-01'); 
     $end_date = date('Y-m-d');
@@ -31,22 +41,24 @@ $available_slots = pg_fetch_result(pg_query($conn, "SELECT COUNT(*) FROM tbl_par
 $total_slots = pg_fetch_result(pg_query($conn, "SELECT COUNT(*) FROM tbl_parking_listing"), 0, 0);
 
 // 2. Revenue Calculation (Range)
-$revenue_query = "SELECT SUM((EXTRACT(HOUR FROM (b.end_time - b.start_time))) * p.price) as total_rev 
+$revenue_query = "SELECT SUM(GREATEST(1, EXTRACT(HOUR FROM ((b.booking_date + b.end_time) - (b.booking_date + b.start_time)))) * p.price) as total_rev 
                   FROM tbl_booking b 
                   JOIN tbl_parking_listing p ON b.parking_id = p.parking_id
-                  WHERE b.booking_date BETWEEN $1 AND $2";
+                  WHERE b.booking_date::date BETWEEN $1 AND $2
+                  AND b.booking_status IN ('Confirmed', 'Occupied', 'Completed')";
 $revenue_res = pg_query_params($conn, $revenue_query, array($start_date, $end_date));
 $total_revenue = pg_fetch_result($revenue_res, 0, 0) ?: 0;
 
 // 3. Activity Query (Range)
 $query_recent = "SELECT b.booking_id, b.booking_date, u.full_name, p.slot_number, p.price as hourly_rate, 
-                  b.plate_number, b.phone_number, b.start_time, b.end_time,
-                  (EXTRACT(HOUR FROM (b.end_time - b.start_time))) as duration
+                  b.plate_number, b.phone_number, b.start_time, b.end_time, b.booking_status,
+                  GREATEST(1, EXTRACT(HOUR FROM ((b.booking_date + b.end_time) - (b.booking_date + b.start_time)))) as duration
                   FROM tbl_booking b 
                   JOIN tbl_user u ON b.user_id = u.user_id 
                   JOIN tbl_parking_listing p ON b.parking_id = p.parking_id 
-                  WHERE b.booking_date BETWEEN $1 AND $2
-                  ORDER BY b.booking_date DESC, b.start_time DESC";
+                  WHERE b.booking_date::date BETWEEN $1 AND $2
+                  AND b.booking_status IN ('Confirmed', 'Occupied', 'Completed')
+                  ORDER BY b.booking_id DESC, b.booking_date DESC, b.start_time DESC";
 
 $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end_date));
 ?>
@@ -58,7 +70,7 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; margin: 0; padding-bottom: 150px; } /* Added padding for floating buttons */
+        body { font-family: 'Segoe UI', Arial, sans-serif; background: #ffffff; margin: 0; padding-bottom: 150px; } 
         
         .header {
             background: linear-gradient(to bottom, #d4bc44, #ffffff);
@@ -87,10 +99,16 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
         th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 13px; }
         th { background: #f8f9fa; color: #888; text-transform: uppercase; font-size: 11px; }
         
+        /* Interactive Status Tag Styles */
+        .status-badge { padding: 3px 8px; border-radius: 6px; font-size: 10px; font-weight: bold; text-transform: uppercase; }
+        .badge-confirmed { background: #fef3c7; color: #d97706; }
+        .badge-occupied { background: #dbeafe; color: #2563eb; }
+        .badge-completed { background: #d1fae5; color: #059669; }
+
         /* BOTTOM ACTION BAR (STICKY) */
         .sticky-actions {
             position: fixed;
-            bottom: 65px; /* Sits right above bottom-nav */
+            bottom: 65px; 
             left: 0;
             width: 100%;
             background: rgba(255, 255, 255, 0.95);
@@ -104,7 +122,7 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
         }
 
         .bottom-nav {
-            position: fixed; bottom: 0; width: 100%; background: #fff;
+            position: fixed; bottom: 0; left: 0; width: 100%; background: #fff;
             display: flex; justify-content: space-around; padding: 10px 0;
             border-top: 1px solid #eee; box-shadow: 0 -2px 10px rgba(0,0,0,0.05); z-index: 1000;
         }
@@ -144,18 +162,18 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
             <div class="stat-card"><p>Total Slots</p><h3><?php echo $total_slots; ?></h3></div>
             <div class="stat-card"><p>Available</p><h3><?php echo $available_slots; ?></h3></div>
             <div class="stat-card"><p>Total Users</p><h3><?php echo $user_count; ?></h3></div>
-            <div class="stat-card"><p>Revenue</p><h3 style="color:#27ae60;">RM<?php echo number_format($total_revenue, 0); ?></h3></div>
+            <div class="stat-card"><p>Revenue</p><h3 style="color:#27ae60;">RM<?php echo number_format($total_revenue, 2); ?></h3></div>
         </div>
 
         <div class="table-container">
             <h3 style="margin: 0 0 10px 0; font-size: 1rem;">
                 Activity Log: 
-                <?php echo ($start_date == $end_date) ? date('d M Y', strtotime($start_date)) : date('d M', strtotime($start_date)) . " - " . date('d M Y', strtotime($end_date)); ?>
+                <?php echo (date('Y-m-d', strtotime($start_date)) == date('Y-m-d', strtotime($end_date))) ? date('d M Y', strtotime($start_date)) : date('d M', strtotime($start_date)) . " - " . date('d M Y', strtotime($end_date)); ?>
             </h3>
             <table>
                 <thead>
                     <tr>
-                        <th>ID</th><th>Driver</th><th>Slot</th><th>Time</th><th>Duration</th><th>Fee</th>
+                        <th>ID</th><th>Driver</th><th>Slot</th><th>Time</th><th>Duration</th><th>Status</th><th>Fee</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -163,15 +181,23 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
                         <?php while ($row = pg_fetch_assoc($recent_bookings)): ?>
                         <tr>
                             <td>#<?php echo $row['booking_id']; ?></td>
-                            <td><strong><?php echo $row['full_name']; ?></strong><br><small><?php echo $row['plate_number']; ?></small></td>
-                            <td><?php echo $row['slot_number']; ?></td>
+                            <td><strong><?php echo htmlspecialchars($row['full_name']); ?></strong><br><small><?php echo htmlspecialchars($row['plate_number']); ?></small></td>
+                            <td><?php echo htmlspecialchars($row['slot_number']); ?></td>
                             <td><?php echo date("h:i A", strtotime($row['start_time'])); ?></td>
-                            <td><?php echo $row['duration']; ?> Hr</td>
+                            <td><?php echo htmlspecialchars($row['duration']); ?> Hr</td>
+                            <td>
+                                <?php 
+                                $status = $row['booking_status'];
+                                if ($status === 'Confirmed') echo '<span class="status-badge badge-confirmed">Confirmed</span>';
+                                elseif ($status === 'Occupied') echo '<span class="status-badge badge-occupied">Occupied</span>';
+                                else echo '<span class="status-badge badge-completed">Completed</span>';
+                                ?>
+                            </td>
                             <td style="color:#27ae60; font-weight:bold;">RM<?php echo number_format($row['duration'] * $row['hourly_rate'], 2); ?></td>
                         </tr>
                         <?php endwhile; ?>
                     <?php else: ?>
-                        <tr><td colspan="6" style="text-align:center; padding: 20px; color: #888;">No records found. Click APPLY to refresh.</td></tr>
+                        <tr><td colspan="7" style="text-align:center; padding: 20px; color: #888;">No records found. Click APPLY to refresh.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>

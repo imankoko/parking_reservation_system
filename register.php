@@ -15,12 +15,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $check_res = pg_query_params($conn, $check_query, array($email));
 
     if (pg_num_rows($check_res) > 0) {
-        // Professional Error Message
         $error_msg = "The email address '$email' is already registered. Please use another or log in.";
     } else {
-        // 2. PROCEED: If email is unique, insert the new user
+        // 2. SECURITY FIX: Hash the password before storing
+        // password_hash() uses bcrypt by default — never store plain text passwords
+        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+
         $query = "INSERT INTO tbl_user (full_name, email, password, role) VALUES ($1, $2, $3, $4)";
-        $result = pg_query_params($conn, $query, array($full_name, $email, $password, $role));
+        $result = pg_query_params($conn, $query, array($full_name, $email, $hashed_password, $role));
 
         if ($result) {
             $success_msg = "Registration successful! You can now log in.";
@@ -70,7 +72,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             <input type="email" name="email" required>
 
             <label>Password</label>
-            <input type="password" name="password" required>
+            <input type="password" name="password" required minlength="6">
 
             <label>Role</label>
             <select name="role">

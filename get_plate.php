@@ -1,44 +1,63 @@
 <?php
 /**
  * get_plate.php
- * This file provides the current plate number of a specific slot to the ESP32.
- * It ensures that the hardware only shows a plate if the spot is 'Occupied'.
+ * This file provides the current plate number or countdown tracking status 
+ * of a specific slot to the ESP32 in clean PLAIN TEXT format.
  */
 
 // Include database connection
 include 'db_connect.php';
 
-// ob_clean prevents any accidental whitespace or HTML from being sent to the ESP32
+// Prevent any accidental whitespace or HTML from breaking the text reading
 ob_clean(); 
+header("Content-Type: text/plain");
+
+// Synchronize all application runtime environments cleanly onto Malaysian Time
+pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
+date_default_timezone_set('Asia/Kuala_Lumpur');
+
+// We target Slot A01 specifically for your hardware unit
+$slot_number = 'A01';
 
 /**
- * We target Slot A01 specifically for your hardware unit.
- * ILIKE %A01% is used to avoid issues with hidden spaces in the database.
+ * FETCH ENGINE: Extract dates, start/end times, and the absolute dynamic differences
+ * directly from PostgreSQL using the exact type casting logic we verified.
  */
-$query = "SELECT current_plate, status FROM tbl_parking_listing WHERE slot_number ILIKE '%A01%' LIMIT 1";
-$result = pg_query($conn, $query);
+$booking_query = "SELECT b.booking_id, b.plate_number, b.booking_status,
+                  EXTRACT(EPOCH FROM (b.start_time - CURRENT_TIME::time)) AS seconds_until_start,
+                  EXTRACT(EPOCH FROM (b.end_time - CURRENT_TIME::time)) AS seconds_remaining
+                  FROM tbl_booking b
+                  JOIN tbl_parking_listing p ON b.parking_id = p.parking_id
+                  WHERE p.slot_number ILIKE $1
+                  AND b.booking_status IN ('Confirmed', 'Occupied')
+                  ORDER BY b.booking_id DESC LIMIT 1";
 
-if ($result && $row = pg_fetch_assoc($result)) {
-    // Trim values to remove any invisible characters
-    $status = trim($row['status']);
-    $plate = trim($row['current_plate']);
+$result = pg_query_params($conn, $booking_query, array('%' . $slot_number . '%'));
 
-    /**
-     * LOGIC: 
-     * 1. Status must be 'Occupied' (matches payment_success.php).
-     * 2. current_plate must not be empty.
-     */
-    if (strcasecmp($status, 'Occupied') == 0 && !empty($plate)) {
-        // Send ONLY the plate number text to the Arduino
-        echo $plate; 
+if ($result && $booking = pg_fetch_assoc($result)) {
+    $seconds_until_start = intval($booking['seconds_until_start']);
+    $seconds_remaining = intval($booking['seconds_remaining']);
+    $plate_number = strtoupper(trim($booking['plate_number']));
+
+    if ($seconds_until_start > 0) {
+        // STATE A: Future advanced reservation mode (Waiting)
+        // Output format: "ST: MM:SS [PLATE]"
+        $m = floor($seconds_until_start / 60);
+        $s = $seconds_until_start % 60;
+        echo sprintf("In %02d:%02d [%s]", $m, $s, $plate_number);
+    } else if ($seconds_remaining > 0) {
+        // STATE B: Active reservation window running live
+        // Output format: standard license plate number to display
+        echo $plate_number;
     } else {
-        // If the spot is Available or Booked but not yet 'Occupied'
-        echo "VACANT"; 
+        // STATE C: Natural expiration block fallback
+        echo "VACANT";
     }
 } else {
-    // Fallback if the slot A01 does not exist in the database
+    // STATE D: No booking exists
     echo "VACANT";
 }
 
 // Exit to ensure no extra characters or newlines are appended to the response
 exit();
+?>

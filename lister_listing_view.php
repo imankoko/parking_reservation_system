@@ -9,6 +9,9 @@ if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'Lister') {
 
 $lister_id = $_SESSION['user_id'];
 
+// SYNC TIMEZONE CONFIG
+pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
+
 $query = "SELECT p.*, 
           (SELECT b.plate_number 
            FROM tbl_booking b 
@@ -37,16 +40,20 @@ $result = pg_query_params($conn, $query, array($lister_id));
         .btn-back { color: #000; text-decoration: none; font-size: 1.2rem; }
         .main-content { padding: 15px; }
         .table-container { background: white; padding: 10px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); overflow-x: auto; }
-        table { width: 100%; border-collapse: collapse; min-width: 500px; }
-        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #eee; }
+        table { width: 100%; border-collapse: collapse; min-width: 600px; }
+        th, td { padding: 15px; text-align: left; border-bottom: 1px solid #eee; vertical-align: middle; }
         th { background: #f8f9fa; color: #888; text-transform: uppercase; font-size: 11px; }
         .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
         .status-available { background: #e8f5e9; color: #2e7d32; }
         .status-booked { background: #ffebee; color: #c62828; }
+        .status-occupied { background: #e3f2fd; color: #0d47a1; } /* Added blue style for Occupied checking state */
+        .status-penalty { background: #e74c3c; color: white; }
         .bottom-nav { position: fixed; bottom: 0; width: 100%; background: #fff; display: flex; justify-content: space-around; padding: 12px 0; border-top: 1px solid #eee; }
         .nav-item { text-align: center; text-decoration: none; color: #888; font-size: 0.7rem; flex: 1; }
         .nav-item i { font-size: 1.4rem; display: block; margin-bottom: 3px; }
         .nav-item.active { color: #000; }
+        .qr-thumb { width: 45px; height: 45px; border: 1px solid #ddd; padding: 2px; border-radius: 4px; cursor: pointer; transition: transform 0.2s; }
+        .qr-thumb:hover { transform: scale(2); position: relative; z-index: 10; background: white; }
     </style>
 </head>
 <body>
@@ -65,7 +72,7 @@ $result = pg_query_params($conn, $query, array($lister_id));
                         <th>Price</th>
                         <th>Status</th>
                         <th>Current Plate</th>
-                    </tr>
+                        <th>Scan QR Check-In</th> </tr>
                 </thead>
                 <tbody>
                     <?php if (pg_num_rows($result) > 0): ?>
@@ -79,15 +86,36 @@ $result = pg_query_params($conn, $query, array($lister_id));
                             <td><small><?php echo htmlspecialchars($row['location']); ?></small></td>
                             <td>RM <?php echo number_format($row['price'], 2); ?></td>
                             <td>
-                                <span class="status-badge <?php echo ($row['status'] == 'Available') ? 'status-available' : 'status-booked'; ?>">
-                                    <?php echo $row['status']; ?>
+                                <?php 
+                                    $badge_class = 'status-booked'; 
+                                    if ($row['status'] === 'Available') { 
+                                        $badge_class = 'status-available'; 
+                                    } elseif ($row['status'] === 'Occupied') { 
+                                        $badge_class = 'status-occupied'; 
+                                    } elseif ($row['status'] === 'Penalty') { 
+                                        $badge_class = 'status-penalty'; 
+                                    }
+                                ?>
+                                <span class="status-badge <?php echo $badge_class; ?>">
+                                    <?php echo htmlspecialchars($row['status']); ?>
                                 </span>
                             </td>
                             <td><small><?php echo htmlspecialchars($row['current_plate'] ?: '-'); ?></small></td>
+                            
+                            <td>
+                                <?php 
+                                    $slot_param = urlencode($row['slot_number']);
+                                    // This dynamically creates a clickable QR code pointing directly to your verify_qr.php logic file
+                                    $qr_api_url = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" . urlencode("http://localhost/parking_system/verify_qr.php?slot=" . $slot_param);
+                                ?>
+                                <a href="verify_qr.php?slot=<?php echo $slot_param; ?>" target="_blank" title="Click to simulate scanning this physical slot barcode sticker">
+                                    <img src="<?php echo $qr_api_url; ?>" alt="QR Code" class="qr-thumb">
+                                </a>
+                            </td>
                         </tr>
                         <?php endwhile; ?>
                     <?php else: ?>
-                        <tr><td colspan="5" style="text-align:center; padding: 20px; color: #888;">No active listings found.</td></tr>
+                        <tr><td colspan="6" style="text-align:center; padding: 20px; color: #888;">No active listings found.</td></tr>
                     <?php endif; ?>
                 </tbody>
             </table>
