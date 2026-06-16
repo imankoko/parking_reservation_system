@@ -5,6 +5,9 @@
  * of a specific slot to the ESP32 in clean PLAIN TEXT format.
  */
 
+// 1. START OUTPUT BUFFERING TO PREVENT ob_clean FATAL CRASHES ON LINUX SERVERS
+ob_start();
+
 // Include database connection
 include 'db_connect.php';
 
@@ -28,11 +31,11 @@ $booking_query = "SELECT b.booking_id, b.plate_number, b.booking_status,
                   EXTRACT(EPOCH FROM (b.end_time - CURRENT_TIME::time)) AS seconds_remaining
                   FROM tbl_booking b
                   JOIN tbl_parking_listing p ON b.parking_id = p.parking_id
-                  WHERE p.slot_number ILIKE $1
+                  WHERE TRIM(UPPER(p.slot_number)) = TRIM(UPPER($1))
                   AND b.booking_status IN ('Confirmed', 'Occupied')
                   ORDER BY b.booking_id DESC LIMIT 1";
 
-$result = pg_query_params($conn, $booking_query, array('%' . $slot_number . '%'));
+$result = pg_query_params($conn, $booking_query, array($slot_number));
 
 if ($result && $booking = pg_fetch_assoc($result)) {
     $seconds_until_start = intval($booking['seconds_until_start']);
@@ -41,7 +44,7 @@ if ($result && $booking = pg_fetch_assoc($result)) {
 
     if ($seconds_until_start > 0) {
         // STATE A: Future advanced reservation mode (Waiting)
-        // Output format: "ST: MM:SS [PLATE]"
+        // Output format: "In MM:SS [PLATE]"
         $m = floor($seconds_until_start / 60);
         $s = $seconds_until_start % 60;
         echo sprintf("In %02d:%02d [%s]", $m, $s, $plate_number);
@@ -58,6 +61,7 @@ if ($result && $booking = pg_fetch_assoc($result)) {
     echo "VACANT";
 }
 
-// Exit to ensure no extra characters or newlines are appended to the response
+// Flush and send output clean
+ob_end_flush();
 exit();
 ?>
