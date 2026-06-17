@@ -139,18 +139,10 @@ $notification_count = pg_num_rows($blocked_res);
 
         /* BOTTOM ACTION BAR (STICKY) */
         .sticky-actions {
-            position: fixed;
-            bottom: 65px; 
-            left: 0;
-            width: 100%;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 12px 0;
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            box-shadow: 0 -5px 15px rgba(0,0,0,0.08);
-            z-index: 999;
-            backdrop-filter: blur(8px);
+            position: fixed; bottom: 65px; left: 0; width: 100%;
+            background: rgba(255, 255, 255, 0.95); padding: 12px 0;
+            display: flex; justify-content: center; gap: 10px;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.08); z-index: 999; backdrop-filter: blur(8px);
         }
 
         .bottom-nav {
@@ -282,13 +274,13 @@ $notification_count = pg_num_rows($blocked_res);
     <nav class="bottom-nav">
         <a href="admin_dashboard.php" class="nav-item active"><i class="fa-solid fa-chart-pie"></i> Report</a>
         <a href="admin_reviews.php" class="nav-item"><i class="fa-solid fa-star"></i> Reviews</a>
+        <a href="admin_manage_users.php" class="nav-item"><i class="fa-solid fa-users-gear"></i> Users</a>
         <a href="logout.php" class="nav-item" style="color:#dc3545;" onclick="return confirm('Logout?')">
             <i class="fa-solid fa-right-from-bracket"></i> Logout
         </a>
     </nav>
 
     <script>
-    // 🎛️ PERIOD SELECTION CALENDAR OVERLAY LOCKS
     document.getElementById('periodSelect').addEventListener('change', function() {
         const startInput = document.getElementById('startDate');
         const endInput = document.getElementById('endDate');
@@ -308,13 +300,11 @@ $notification_count = pg_num_rows($blocked_res);
         }
     });
 
-    // 🔔 INTERACTIVE DROPDOWN CLICK LISTENER
     document.getElementById('notiBellWrapper').addEventListener('click', function(e) {
         e.stopPropagation();
         document.getElementById('notiDropdownTray').classList.toggle('show');
     });
 
-    // Auto-close dropdown tray if user clicks anywhere else on the screen background
     document.addEventListener('click', function() {
         document.getElementById('notiDropdownTray').classList.remove('show');
     });

@@ -14,25 +14,37 @@ if (!isset($_SESSION['role']) || ($_SESSION['role'] !== 'Lister' && $_SESSION['r
 
 // 2. CHECK FOR ID: Ensure the parking_id is in the URL
 if (!isset($_GET['id'])) {
-    header("Location: index.php");
+    header("Location: available_parking.php");
     exit();
 }
 
 $parking_id = $_GET['id'];
 
-// 3. UPDATED QUERY: Added Time and Date filtering
-// This ensures we only see the plate of the driver who is supposed to be there RIGHT NOW.
-// Look directly at the listing table where the LCD gets its data
-$query = "SELECT slot_number, current_plate as plate_number, 
-          (SELECT phone_number FROM tbl_booking WHERE parking_id = $1 ORDER BY booking_id DESC LIMIT 1) as phone_number
-          FROM tbl_parking_listing 
-          WHERE parking_id = $1 LIMIT 1";
+// Force connection to stay localized on Malaysian Time
+pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
+date_default_timezone_set('Asia/Kuala_Lumpur');
+
+// 3. UPDATED CORE ENGINE: Real-time active booking validation
+// Finds the slot metadata and joins tbl_booking based on the group slot string 
+// to grab the exact plate and phone number active at THIS SPECIFIC MINUTE.
+$query = "SELECT p.slot_number, 
+                 b.plate_number, 
+                 b.phone_number
+          FROM tbl_parking_listing p
+          LEFT JOIN tbl_parking_listing sub_p ON sub_p.slot_number = p.slot_number
+          LEFT JOIN tbl_booking b ON b.parking_id = sub_p.parking_id 
+               AND TRIM(UPPER(b.booking_status)) IN ('CONFIRMED', 'PAID', 'OCCUPIED')
+               AND b.booking_date::date = CURRENT_DATE
+               AND CURRENT_TIME::time BETWEEN b.start_time::time AND b.end_time::time
+          WHERE p.parking_id = $1 
+          LIMIT 1";
 
 $result = pg_query_params($conn, $query, array($parking_id));
 $data = pg_fetch_assoc($result);
 
-// 4. NAVIGATION FIX: Use history.back() instead of hardcoded redirect
-if (!$data) {
+// 4. VACANT CHECK AND REDIRECT
+// If the slot layout element does not exist or has no active session running right now
+if (!$data || empty($data['plate_number'])) {
     echo "<script>alert('This slot is currently vacant (no active booking at this time).'); window.history.back();</script>";
     exit();
 }
@@ -60,7 +72,7 @@ if (!$data) {
             <p style="font-size: 0.9em; color: #FFD700; letter-spacing: 2px; margin-bottom: 10px; font-weight: bold;">CURRENT OCCUPANT</p>
             
             <h1 style="font-size: 3.5em; margin: 0; letter-spacing: 5px; font-family: monospace; text-transform: uppercase;">
-                <?php echo htmlspecialchars($data['plate_number'] ?? '-'); ?>
+                <?php echo htmlspecialchars($data['plate_number']); ?>
             </h1>
             
             <hr style="border: 0; border-top: 1px solid #555; margin: 25px 0;">
