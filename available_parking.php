@@ -37,7 +37,8 @@ if (empty($selected_branch)) {
 pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
 date_default_timezone_set('Asia/Kuala_Lumpur');
 
-// --- BULLETPROOF FETCH ENGINE CORE (RESTORED & OPTIMIZED FOR PENALTY ROUTING) ---
+// --- BULLETPROOF FETCH ENGINE CORE (FIXED SORT STACK CONFLICT) ---
+// We sort strictly by slot_number and the latest parking_id DESC first to guarantee DISTINCT ON picks the accurate real-time row.
 $query = "SELECT DISTINCT ON (p.slot_number) p.*,
           (SELECT STRING_AGG(TO_CHAR(b.start_time::time, 'HH:MI AM') || ' - ' || TO_CHAR(b.end_time::time, 'HH:MI AM'), ', ')
            FROM tbl_booking b 
@@ -51,14 +52,10 @@ $query = "SELECT DISTINCT ON (p.slot_number) p.*,
 
 if ($selected_zone !== 'All') {
     $query .= " AND p.location LIKE $2 
-               ORDER BY p.slot_number ASC, 
-                        CASE WHEN TRIM(UPPER(p.status)) IN ('PENALIZED', 'OCCUPIED') THEN 1 ELSE 2 END ASC, 
-                        p.parking_id DESC";
+               ORDER BY p.slot_number ASC, p.parking_id DESC";
     $result = pg_query_params($conn, $query, array("%" . strtoupper($selected_branch) . "%", "%$selected_zone%"));
 } else {
-    $query .= " ORDER BY p.slot_number ASC, 
-               CASE WHEN TRIM(UPPER(p.status)) IN ('PENALIZED', 'OCCUPIED') THEN 1 ELSE 2 END ASC, 
-               p.parking_id DESC";
+    $query .= " ORDER BY p.slot_number ASC, p.parking_id DESC";
     $result = pg_query_params($conn, $query, array("%" . strtoupper($selected_branch) . "%"));
 }
 
@@ -75,14 +72,10 @@ if (!$result || pg_num_rows($result) === 0) {
               WHERE TRIM(BOTH FROM UPPER(p.status)) != 'INACTIVE'";
     if ($selected_zone !== 'All') {
         $query .= " AND p.location LIKE $1 
-                   ORDER BY p.slot_number ASC, 
-                            CASE WHEN TRIM(UPPER(p.status)) IN ('PENALIZED', 'OCCUPIED') THEN 1 ELSE 2 END ASC, 
-                            p.parking_id DESC";
+                   ORDER BY p.slot_number ASC, p.parking_id DESC";
         $result = pg_query_params($conn, $query, array("%$selected_zone%"));
     } else {
-        $query .= " ORDER BY p.slot_number ASC, 
-                   CASE WHEN TRIM(UPPER(p.status)) IN ('PENALIZED', 'OCCUPIED') THEN 1 ELSE 2 END ASC, 
-                   p.parking_id DESC";
+        $query .= " ORDER BY p.slot_number ASC, p.parking_id DESC";
         $result = pg_query($conn, $query);
     }
 }
