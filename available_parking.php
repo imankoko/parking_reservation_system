@@ -180,7 +180,7 @@ $has_slots = ($result && pg_num_rows($result) > 0);
     </div>
 
     <div class="header-section">
-        <h2 style="margin:0; font-size: 1.2rem;">Interactive Map</h2>
+        <h2 style="margin:0; font-size: 1.2rem;">Parking Layout</h2>
         <p style="color: #666; font-size: 0.85rem; margin-top: 5px;">Available: <strong><?php echo $count_available; ?> slots</strong></p>
     </div>
 
