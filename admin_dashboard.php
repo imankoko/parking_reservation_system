@@ -61,6 +61,13 @@ $query_recent = "SELECT b.booking_id, b.booking_date, u.full_name, p.slot_number
                   ORDER BY b.booking_id DESC, b.booking_date DESC, b.start_time DESC";
 
 $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end_date));
+
+// 4. --- LIVE DYNAMIC NOTIFICATION DISCOVERY ENGINE ---
+$blocked_query = "SELECT slot_number, branch, location, status FROM tbl_parking_listing 
+                  WHERE TRIM(BOTH FROM UPPER(status)) IN ('BLOCKED', 'MAINTENANCE', 'INACTIVE') 
+                  ORDER BY branch ASC, slot_number ASC";
+$blocked_res = pg_query($conn, $blocked_query);
+$notification_count = pg_num_rows($blocked_res);
 ?>
 
 <!DOCTYPE html>
@@ -74,10 +81,34 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
         
         .header {
             background: linear-gradient(to bottom, #d4bc44, #ffffff);
-            padding: 30px 20px; display: flex; align-items: center; gap: 15px;
+            padding: 30px 20px; display: flex; align-items: center; gap: 15px; position: relative;
         }
         .logo-img { width: 60px; height: auto; }
         .header-text h2 { margin: 0; font-size: 1.4rem; color: #000; }
+
+        /* NOTIFICATION BAR COMPONENT DESIGNS */
+        .notification-container {
+            position: absolute; right: 25px; top: 35px; cursor: pointer; z-index: 1010;
+        }
+        .bell-icon { font-size: 1.5rem; color: #000; position: relative; }
+        .badge-counter {
+            position: absolute; top: -7px; right: -8px; background: #dc3545; color: white;
+            font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .notification-dropdown {
+            display: none; position: absolute; right: 0; top: 35px; width: 300px;
+            background: #ffffff; border: 1px solid #d4bc44; border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15); z-index: 1025; overflow: hidden;
+        }
+        .notification-dropdown.show { display: block; }
+        .noti-header { background: #f8f9fa; padding: 12px; font-size: 13px; font-weight: bold; border-bottom: 1px solid #eee; color: #333; }
+        .noti-body { max-height: 250px; overflow-y: auto; }
+        .noti-item {
+            padding: 12px; border-bottom: 1px solid #f5f5f5; font-size: 12px; display: flex; gap: 10px; align-items: start; transition: background 0.2s;
+        }
+        .noti-item:hover { background: #fffdf3; }
+        .noti-item i { margin-top: 2px; }
 
         .main-content { padding: 20px; }
         
@@ -137,6 +168,39 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
     <div class="header">
         <img src="logo.png" class="logo-img" alt="Logo">
         <div class="header-text"><h2>Administrator Dashboard</h2></div>
+
+        <div class="notification-container" id="notiBellWrapper">
+            <div class="bell-icon">
+                <i class="fa-solid fa-bell"></i>
+                <?php if ($notification_count > 0): ?>
+                    <span class="badge-counter"><?php echo $notification_count; ?></span>
+                <?php endif; ?>
+            </div>
+            <div class="notification-dropdown" id="notiDropdownTray">
+                <div class="noti-header">System Alerts (<?php echo $notification_count; ?>)</div>
+                <div class="noti-body">
+                    <?php if ($notification_count > 0): ?>
+                        <?php while ($unit = pg_fetch_assoc($blocked_res)): ?>
+                            <div class="noti-item">
+                                <i class="fa-solid fa-triangle-exclamation" style="color: #dc3545; font-size: 1.1rem;"></i>
+                                <div>
+                                    <span style="font-weight: bold; color: #c0392b;">Slot <?php echo htmlspecialchars($unit['slot_number']); ?> Blocked!</span><br>
+                                    <small style="color: #666; font-size: 11px;">
+                                        Branch: <?php echo htmlspecialchars($unit['branch']); ?> (<?php echo htmlspecialchars($unit['location']); ?>)<br>
+                                        Status: <span style="text-transform: lowercase; font-weight: bold; color: #333;"><?php echo htmlspecialchars($unit['status']); ?></span>
+                                    </small>
+                                </div>
+                            </div>
+                        <?php endwhile; ?>
+                    <?php else: ?>
+                        <div style="padding: 25px; text-align: center; color: #888; font-size: 12px;">
+                            <i class="fa-solid fa-circle-check" style="color: #2ecc71; font-size: 1.8rem; display: block; margin-bottom: 8px;"></i>
+                            All physical parking slots are working healthy!
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="main-content">
@@ -224,6 +288,7 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
     </nav>
 
     <script>
+    // 🎛️ PERIOD SELECTION CALENDAR OVERLAY LOCKS
     document.getElementById('periodSelect').addEventListener('change', function() {
         const startInput = document.getElementById('startDate');
         const endInput = document.getElementById('endDate');
@@ -241,6 +306,17 @@ $recent_bookings = pg_query_params($conn, $query_recent, array($start_date, $end
             startInput.value = last30.toISOString().split('T')[0];
             endInput.value = today;
         }
+    });
+
+    // 🔔 INTERACTIVE DROPDOWN CLICK LISTENER
+    document.getElementById('notiBellWrapper').addEventListener('click', function(e) {
+        e.stopPropagation();
+        document.getElementById('notiDropdownTray').classList.toggle('show');
+    });
+
+    // Auto-close dropdown tray if user clicks anywhere else on the screen background
+    document.addEventListener('click', function() {
+        document.getElementById('notiDropdownTray').classList.remove('show');
     });
     </script>
 </body>
