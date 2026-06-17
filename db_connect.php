@@ -20,4 +20,8 @@ if (!empty($db_url)) {
 if (!$conn) {
     die("Database connection failed. Please check configuration settings.");
 }
+
+// --- THE CRITICAL TIMEZONE BRIDGE FIX ---
+// This guarantees that the live PostgreSQL engine on Render runs on Malaysia Time (GMT+8)
+pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
 ?>
