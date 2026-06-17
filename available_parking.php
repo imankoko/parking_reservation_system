@@ -37,52 +37,40 @@ if (empty($selected_branch)) {
 pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
 date_default_timezone_set('Asia/Kuala_Lumpur');
 
-// --- BULLETPROOF FETCH ENGINE CORE (RESTORED & OPTIMIZED FOR PENALTY ROUTING) ---
-$query = "SELECT DISTINCT ON (p.slot_number) p.*,
-          (SELECT STRING_AGG(TO_CHAR(b.start_time::time, 'HH:MI AM') || ' - ' || TO_CHAR(b.end_time::time, 'HH:MI AM'), ', ')
+// --- 100% MATCHED LOCALHOST QUERY ENGINE ---
+$query = "SELECT DISTINCT ON (slot_number) *,
+          (SELECT STRING_AGG(TO_CHAR(b.start_time, 'HH:MI AM') || ' - ' || TO_CHAR(b.end_time, 'HH:MI AM'), ', ')
            FROM tbl_booking b 
-           JOIN tbl_parking_listing pl ON b.parking_id = pl.parking_id
-           WHERE pl.slot_number = p.slot_number 
-           AND TRIM(UPPER(b.booking_status)) IN ('CONFIRMED', 'PAID', 'OCCUPIED') 
-           AND b.booking_date::date = CURRENT_DATE) as reserved_timelines
-          FROM tbl_parking_listing p
-          WHERE TRIM(BOTH FROM UPPER(p.branch)) LIKE $1 
-          AND TRIM(BOTH FROM UPPER(p.status)) != 'INACTIVE'";
+           WHERE b.parking_id = tbl_parking_listing.parking_id 
+           AND b.booking_status = 'Confirmed' 
+           AND b.booking_date = CURRENT_DATE) as reserved_timelines
+          FROM tbl_parking_listing 
+          WHERE TRIM(BOTH FROM UPPER(branch)) LIKE $1 
+          AND TRIM(BOTH FROM UPPER(status)) != 'INACTIVE'";
 
 if ($selected_zone !== 'All') {
-    $query .= " AND p.location LIKE $2 
-               ORDER BY p.slot_number ASC, 
-                        CASE WHEN TRIM(UPPER(p.status)) IN ('PENALIZED', 'OCCUPIED') THEN 1 ELSE 2 END ASC, 
-                        p.parking_id DESC";
+    $query .= " AND location LIKE $2 ORDER BY slot_number ASC, parking_id DESC";
     $result = pg_query_params($conn, $query, array("%" . strtoupper($selected_branch) . "%", "%$selected_zone%"));
 } else {
-    $query .= " ORDER BY p.slot_number ASC, 
-               CASE WHEN TRIM(UPPER(p.status)) IN ('PENALIZED', 'OCCUPIED') THEN 1 ELSE 2 END ASC, 
-               p.parking_id DESC";
+    $query .= " ORDER BY slot_number ASC, parking_id DESC";
     $result = pg_query_params($conn, $query, array("%" . strtoupper($selected_branch) . "%"));
 }
 
-// FALLBACK ENGINE
+// FALLBACK ENGINE: If the branch filter returned 0 rows, show all active slots
 if (!$result || pg_num_rows($result) === 0) {
-    $query = "SELECT DISTINCT ON (p.slot_number) p.*,
-              (SELECT STRING_AGG(TO_CHAR(b.start_time::time, 'HH:MI AM') || ' - ' || TO_CHAR(b.end_time::time, 'HH:MI AM'), ', ')
+    $query = "SELECT DISTINCT ON (slot_number) *,
+              (SELECT STRING_AGG(TO_CHAR(b.start_time, 'HH:MI AM') || ' - ' || TO_CHAR(b.end_time, 'HH:MI AM'), ', ')
                FROM tbl_booking b 
-               JOIN tbl_parking_listing pl ON b.parking_id = pl.parking_id
-               WHERE pl.slot_number = p.slot_number 
-               AND TRIM(UPPER(b.booking_status)) IN ('CONFIRMED', 'PAID', 'OCCUPIED') 
-               AND b.booking_date::date = CURRENT_DATE) as reserved_timelines
-              FROM tbl_parking_listing p 
-              WHERE TRIM(BOTH FROM UPPER(p.status)) != 'INACTIVE'";
+               WHERE b.parking_id = tbl_parking_listing.parking_id 
+               AND b.booking_status = 'Confirmed' 
+               AND b.booking_date = CURRENT_DATE) as reserved_timelines
+              FROM tbl_parking_listing 
+              WHERE TRIM(BOTH FROM UPPER(status)) != 'INACTIVE'";
     if ($selected_zone !== 'All') {
-        $query .= " AND p.location LIKE $1 
-                   ORDER BY p.slot_number ASC, 
-                            CASE WHEN TRIM(UPPER(p.status)) IN ('PENALIZED', 'OCCUPIED') THEN 1 ELSE 2 END ASC, 
-                            p.parking_id DESC";
+        $query .= " AND location LIKE $1 ORDER BY slot_number ASC, parking_id DESC";
         $result = pg_query_params($conn, $query, array("%$selected_zone%"));
     } else {
-        $query .= " ORDER BY p.slot_number ASC, 
-                   CASE WHEN TRIM(UPPER(p.status)) IN ('PENALIZED', 'OCCUPIED') THEN 1 ELSE 2 END ASC, 
-                   p.parking_id DESC";
+        $query .= " ORDER BY slot_number ASC, parking_id DESC";
         $result = pg_query($conn, $query);
     }
 }
@@ -161,9 +149,9 @@ $has_slots = ($result && pg_num_rows($result) > 0);
         .spot:hover:not(.occupied) { transform: translate(-50%, -50%) scale(1.15); z-index: 100; background: #2ecc71; }
 
         .parking-lot { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 20px; max-width: 500px; margin: auto; }
-        .slot-box { height: 130px; background: white; border: 2px dashed #ccc; display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; color: #333; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); cursor: pointer; }
+        .slot-box { height: 130px; background: white; border: 2px dashed #ccc; display: flex; flex-direction: column; align-items: center; justify-content: center; text-decoration: none; color: #333; border-radius: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
         
-        .slot-available { border: 2px solid #2ecc71; background: #ffffff; }
+        .slot-available { border: 2px solid #2ecc71; background: #ffffff; cursor: pointer; }
         .slot-available:active { background: #f4fbf7; }
 
         .bottom-nav {
@@ -175,35 +163,15 @@ $has_slots = ($result && pg_num_rows($result) > 0);
         .nav-item i { font-size: 1.5rem; display: block; margin-bottom: 2px; }
         .nav-item.active { color: #000; }
 
-        /* --- THEMED POP-UP DIALOG UI MODAL --- */
-        .modal-overlay {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.6); display: none; align-items: center;
-            justify-content: center; z-index: 9999; padding: 20px; box-sizing: border-box;
-        }
-        .modal-card {
-            background: #fff; width: 100%; max-width: 400px; border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2); overflow: hidden;
-            animation: modalFadeIn 0.3s ease;
-        }
-        .modal-header {
-            background: linear-gradient(to bottom, #d4bc44, #ffffff);
-            padding: 20px; text-align: center; font-weight: bold; font-size: 1.2rem;
-            color: #000; border-bottom: 1px solid #ddd;
-        }
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.6); display: none; align-items: center; justify-content: center; z-index: 9999; padding: 20px; box-sizing: border-box; }
+        .modal-card { background: #fff; width: 100%; max-width: 400px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); overflow: hidden; animation: modalFadeIn 0.3s ease; }
+        .modal-header { background: linear-gradient(to bottom, #d4bc44, #ffffff); padding: 20px; text-align: center; font-weight: bold; font-size: 1.2rem; color: #000; border-bottom: 1px solid #ddd; }
         .modal-body { padding: 20px; color: #333; font-size: 0.95rem; }
-        .timeline-container {
-            background: #f1f5f9; padding: 12px; border-radius: 8px; margin: 12px 0;
-            font-size: 0.9rem; color: #475569; border-left: 4px solid #ef4444; line-height: 1.5;
-        }
+        .timeline-container { background: #f1f5f9; padding: 12px; border-radius: 8px; margin: 12px 0; font-size: 0.9rem; color: #475569; border-left: 4px solid #ef4444; line-height: 1.5; }
         .modal-footer { padding: 15px 20px 20px 20px; display: flex; gap: 12px; }
-        .modal-btn {
-            flex: 1; padding: 12px; border: none; border-radius: 10px;
-            font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.85rem; transition: 0.2s;
-        }
+        .modal-btn { flex: 1; padding: 12px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; text-transform: uppercase; font-size: 0.85rem; transition: 0.2s; }
         .btn-cancel { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; }
         .btn-confirm { background: #333; color: #d4bc44; }
-        .btn-blocked { background: #94a3b8; color: #fff; cursor: not-allowed; }
         
         @keyframes modalFadeIn {
             from { transform: scale(0.9); opacity: 0; }
@@ -253,10 +221,10 @@ $has_slots = ($result && pg_num_rows($result) > 0);
                         
                         if ($clean_status === 'AVAILABLE' || (!empty($timeline_data) && $clean_status !== 'PENALIZED')) {
                             $class = 'available';
-                            $action = "openThemedModal('".$row['slot_number']."', '".$timeline_data."', '".intval($row['parking_id'])."', '".$clean_status."')";
+                            $action = "openThemedModal('".$row['slot_number']."', '".$timeline_data."', '".intval($row['parking_id'])."')";
                         } else {
                             $class = 'occupied';
-                            $action = "openThemedModal('".$row['slot_number']."', '".$timeline_data."', '".intval($row['parking_id'])."', '".$clean_status."')";
+                            $action = "alert('Slot Taken or Locked!')";
                         }
                         
                         $x = intval($row['x_coord']);
@@ -285,13 +253,13 @@ $has_slots = ($result && pg_num_rows($result) > 0);
                 
                 if ($clean_status === 'AVAILABLE' || (!empty($timeline_data) && $clean_status !== 'PENALIZED')): 
         ?>
-                    <div class="slot-box slot-available" onclick="openThemedModal('<?php echo $row['slot_number']; ?>', '<?php echo $timeline_data; ?>', '<?php echo intval($row['parking_id']); ?>', '<?php echo $clean_status; ?>')">
+                    <div class="slot-box slot-available" onclick="openThemedModal('<?php echo $row['slot_number']; ?>', '<?php echo $timeline_data; ?>', '<?php echo intval($row['parking_id']); ?>')">
                         <span style="font-size: 1.5rem; font-weight: bold; color: #333;"><?php echo htmlspecialchars($row['slot_number']); ?></span>
                         <span style="color: #2ecc71; font-weight: bold;">RM <?php echo number_format($row['price'], 2); ?></span>
                         <small style="color:#888;"><?php echo htmlspecialchars($row['location']); ?></small>
                     </div>
                 <?php else: ?>
-                    <div class="slot-box" style="background: #e0e0e0; border: 2px solid #ccc; opacity: 0.6;" onclick="openThemedModal('<?php echo $row['slot_number']; ?>', '<?php echo $timeline_data; ?>', '<?php echo intval($row['parking_id']); ?>', '<?php echo $clean_status; ?>')">
+                    <div class="slot-box" style="background: #e0e0e0; border: 2px solid #ccc; opacity: 0.6;">
                         <i class="fa-solid fa-car" style="font-size: 1.8rem; color: #999;"></i>
                         <small style="font-weight:bold;"><?php echo htmlspecialchars($row['slot_number']); ?></small>
                         <small style="color: #ef4444; font-weight: bold;"><?php echo htmlspecialchars($clean_status); ?></small>
@@ -316,7 +284,7 @@ $has_slots = ($result && pg_num_rows($result) > 0);
                 <div class="timeline-container" id="modalTimelines">
                     --
                 </div>
-                <p id="modalPromptText" style="margin: 15px 0 0 0; font-size: 0.9rem; color: #475569;">Would you like to reserve this parking slot?</p>
+                <p style="margin: 15px 0 0 0; font-size: 0.9rem; color: #475569;">Would you like to reserve this parking slot?</p>
             </div>
             <div class="modal-footer">
                 <button class="modal-btn btn-cancel" onclick="closeThemedModal()">Cancel</button>
@@ -332,35 +300,24 @@ $has_slots = ($result && pg_num_rows($result) > 0);
     </nav>
 
 <script>
-function openThemedModal(slotNumber, reservedTimelines, parkingId, rawStatus) {
+function openThemedModal(slotNumber, reservedTimelines, parkingId) {
     const modal = document.getElementById('customParkingModal');
-    const confirmBtn = document.getElementById('modalConfirmBtn');
-    const promptText = document.getElementById('modalPromptText');
-    const timelineContainer = document.getElementById('modalTimelines');
-    
     document.getElementById('modalSlotNo').innerText = slotNumber;
     
-    if (rawStatus === 'PENALIZED' || rawStatus === 'OCCUPIED') {
-        timelineContainer.innerHTML = `<span style="color:#ef4444; font-weight:bold;"><i class="fa-solid fa-circle-xmark"></i> Locked by Admin (${rawStatus})</span>`;
-        confirmBtn.className = "modal-btn btn-blocked";
-        confirmBtn.innerText = "Blocked";
-        confirmBtn.removeAttribute('onclick');
-        promptText.innerHTML = `<span style="color:#ef4444; font-weight:bold;">⚠️ This slot is locked due to an active penalty or vehicle presence.</span>`;
+    const timelineContainer = document.getElementById('modalTimelines');
+    if (!reservedTimelines || reservedTimelines.trim() === '') {
+        timelineContainer.innerHTML = `<span style="color:#2ecc71; font-weight:bold;"><i class="fa-solid fa-circle-check"></i> Available: 6:00 AM - 10:00 PM</span>`;
     } else {
-        if (!reservedTimelines || reservedTimelines.trim() === '') {
-            timelineContainer.innerHTML = `<span style="color:#2ecc71; font-weight:bold;"><i class="fa-solid fa-circle-check"></i> Available: 6:00 AM - 10:00 PM</span>`;
-        } else {
-            const formattedTimelines = reservedTimelines.split(', ').join('<br>• ');
-            timelineContainer.innerHTML = '• ' + formattedTimelines;
-        }
-        
-        confirmBtn.className = "modal-btn btn-confirm";
-        confirmBtn.innerText = "Proceed";
-        confirmBtn.setAttribute('onclick', `window.location.href='booking_view.php?id=${parkingId}'`);
-        promptText.innerText = "Would you like to reserve this parking slot?";
+        const formattedTimelines = reservedTimelines.split(', ').join('<br>• ');
+        timelineContainer.innerHTML = '• ' + formattedTimelines;
     }
     
+    document.getElementById('modalConfirmBtn').setAttribute('onclick', `window.location.href='booking_view.php?id=${parkingId}'`);
     modal.style.display = 'flex';
+}
+
+function closeModal('customParkingModal') {
+    document.getElementById('customParkingModal').style.display = 'none';
 }
 
 function closeThemedModal() {
