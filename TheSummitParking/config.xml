@@ -21,9 +21,10 @@
     <platform name="android">
         <preference name="AllowInlineMediaPlayback" value="true" />
         <preference name="CleartextTrafficPermitted" value="true" />
-        
-        <preference name="SplashScreen" value="screen" />
+
+        <preference name="AndroidWindowSplashScreenAnimatedIcon" value="www/img/logo.png" />
+        <preference name="AndroidWindowSplashScreenBackground" value="#FFFFFF" />
         <preference name="AutoHideSplashScreen" value="true" />
-        <preference name="SplashScreenDelay" value="2000" /> <resource-file src="www/img/logo.png" target="app/src/main/res/drawable/screen.png" />
+        <preference name="SplashScreenDelay" value="2000" />
     </platform>
 </widget>
