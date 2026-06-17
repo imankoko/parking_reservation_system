@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='utf-8'?>
+<widget id="com.summit.parking" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+    <name>ParkingSystem</name>
+    <description>
+        Parking Reservation System for The Summit Batu Pahat.
+    </description>
+    <author email="student@uthm.edu.my" href="https://uthm.edu.my">
+        UTHM Developer
+    </author>
+    
+    <content src="index.html" />
+    
+    <access origin="*" />
+    <allow-navigation href="*" />
+    
+    <allow-intent href="http://*/*" />
+    <allow-intent href="https://*/*" />
+    
+    <platform name="android">
+        <preference name="AllowInlineMediaPlayback" value="true" />
+        <preference name="CleartextTrafficPermitted" value="true" />
+    </platform>
+</widget>

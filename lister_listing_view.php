@@ -12,6 +12,8 @@ $lister_id = $_SESSION['user_id'];
 // SYNC TIMEZONE CONFIG
 pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
 
+// FIXED: Removed 'AND p.lister_id = $1' so all listers see all slots.
+// Kept everything else exactly like your original database structure.
 $query = "SELECT p.*, 
           (SELECT b.plate_number 
            FROM tbl_booking b 
@@ -22,10 +24,10 @@ $query = "SELECT p.*,
            LIMIT 1) as plate_number
           FROM tbl_parking_listing p
           WHERE p.status != 'Inactive'
-          AND p.lister_id = $1
           ORDER BY p.slot_number ASC";
 
-$result = pg_query_params($conn, $query, array($lister_id));
+// Running a standard query with no extra parameters now
+$result = pg_query($conn, $query);
 ?>
 
 <!DOCTYPE html>
@@ -46,7 +48,7 @@ $result = pg_query_params($conn, $query, array($lister_id));
         .status-badge { padding: 5px 10px; border-radius: 20px; font-size: 12px; font-weight: bold; }
         .status-available { background: #e8f5e9; color: #2e7d32; }
         .status-booked { background: #ffebee; color: #c62828; }
-        .status-occupied { background: #e3f2fd; color: #0d47a1; } /* Added blue style for Occupied checking state */
+        .status-occupied { background: #e3f2fd; color: #0d47a1; } 
         .status-penalty { background: #e74c3c; color: white; }
         .bottom-nav { position: fixed; bottom: 0; width: 100%; background: #fff; display: flex; justify-content: space-around; padding: 12px 0; border-top: 1px solid #eee; }
         .nav-item { text-align: center; text-decoration: none; color: #888; font-size: 0.7rem; flex: 1; }
@@ -72,10 +74,11 @@ $result = pg_query_params($conn, $query, array($lister_id));
                         <th>Price</th>
                         <th>Status</th>
                         <th>Current Plate</th>
-                        <th>Scan QR Check-In</th> </tr>
+                        <th>Scan QR Check-In</th> 
+                    </tr>
                 </thead>
                 <tbody>
-                    <?php if (pg_num_rows($result) > 0): ?>
+                    <?php if ($result && pg_num_rows($result) > 0): ?>
                         <?php while ($row = pg_fetch_assoc($result)): ?>
                         <tr>
                             <td>
@@ -105,7 +108,6 @@ $result = pg_query_params($conn, $query, array($lister_id));
                             <td>
                                 <?php 
                                     $slot_param = urlencode($row['slot_number']);
-                                    // This dynamically creates a clickable QR code pointing directly to your verify_qr.php logic file
                                     $qr_api_url = "https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=" . urlencode("http://localhost/parking_system/verify_qr.php?slot=" . $slot_param);
                                 ?>
                                 <a href="verify_qr.php?slot=<?php echo $slot_param; ?>" target="_blank" title="Click to simulate scanning this physical slot barcode sticker">
