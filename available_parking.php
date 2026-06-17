@@ -37,8 +37,7 @@ if (empty($selected_branch)) {
 pg_query($conn, "SET TIME ZONE 'Asia/Kuala_Lumpur'");
 date_default_timezone_set('Asia/Kuala_Lumpur');
 
-// --- BULLETPROOF FETCH ENGINE CORE (FIXED SORT STACK CONFLICT) ---
-// We sort strictly by slot_number and the latest parking_id DESC first to guarantee DISTINCT ON picks the accurate real-time row.
+// --- BULLETPROOF FETCH ENGINE CORE ---
 $query = "SELECT DISTINCT ON (p.slot_number) p.*,
           (SELECT STRING_AGG(TO_CHAR(b.start_time::time, 'HH:MI AM') || ' - ' || TO_CHAR(b.end_time::time, 'HH:MI AM'), ', ')
            FROM tbl_booking b 
@@ -51,8 +50,7 @@ $query = "SELECT DISTINCT ON (p.slot_number) p.*,
           AND TRIM(BOTH FROM UPPER(p.status)) != 'INACTIVE'";
 
 if ($selected_zone !== 'All') {
-    $query .= " AND p.location LIKE $2 
-               ORDER BY p.slot_number ASC, p.parking_id DESC";
+    $query .= " AND p.location LIKE $2 ORDER BY p.slot_number ASC, p.parking_id DESC";
     $result = pg_query_params($conn, $query, array("%" . strtoupper($selected_branch) . "%", "%$selected_zone%"));
 } else {
     $query .= " ORDER BY p.slot_number ASC, p.parking_id DESC";
@@ -71,8 +69,7 @@ if (!$result || pg_num_rows($result) === 0) {
               FROM tbl_parking_listing p 
               WHERE TRIM(BOTH FROM UPPER(p.status)) != 'INACTIVE'";
     if ($selected_zone !== 'All') {
-        $query .= " AND p.location LIKE $1 
-                   ORDER BY p.slot_number ASC, p.parking_id DESC";
+        $query .= " AND p.location LIKE $1 ORDER BY p.slot_number ASC, p.parking_id DESC";
         $result = pg_query_params($conn, $query, array("%$selected_zone%"));
     } else {
         $query .= " ORDER BY p.slot_number ASC, p.parking_id DESC";
@@ -244,7 +241,9 @@ $has_slots = ($result && pg_num_rows($result) > 0);
                         $clean_status = trim(strtoupper($row['status']));
                         $timeline_data = !empty($row['reserved_timelines']) ? htmlspecialchars($row['reserved_timelines']) : '';
                         
-                        if ($clean_status === 'AVAILABLE' || (!empty($timeline_data) && $clean_status !== 'PENALIZED')) {
+                        // RESTORED DESIGN DIRECTIVE: Turn red ONLY if explicitly PENALIZED. 
+                        // Occupied or Available slots stay green and open for sequential bookings!
+                        if ($clean_status !== 'PENALIZED' && $clean_status !== 'PENALTY') {
                             $class = 'available';
                             $action = "openThemedModal('".$row['slot_number']."', '".$timeline_data."', '".intval($row['parking_id'])."', '".$clean_status."')";
                         } else {
@@ -276,7 +275,8 @@ $has_slots = ($result && pg_num_rows($result) > 0);
                 $clean_status = trim(strtoupper($row['status']));
                 $timeline_data = !empty($row['reserved_timelines']) ? htmlspecialchars($row['reserved_timelines']) : '';
                 
-                if ($clean_status === 'AVAILABLE' || (!empty($timeline_data) && $clean_status !== 'PENALIZED')): 
+                // Turn gray/red ONLY if explicitly marked as PENALIZED
+                if ($clean_status !== 'PENALIZED' && $clean_status !== 'PENALTY'): 
         ?>
                     <div class="slot-box slot-available" onclick="openThemedModal('<?php echo $row['slot_number']; ?>', '<?php echo $timeline_data; ?>', '<?php echo intval($row['parking_id']); ?>', '<?php echo $clean_status; ?>')">
                         <span style="font-size: 1.5rem; font-weight: bold; color: #333;"><?php echo htmlspecialchars($row['slot_number']); ?></span>
@@ -287,7 +287,7 @@ $has_slots = ($result && pg_num_rows($result) > 0);
                     <div class="slot-box" style="background: #e0e0e0; border: 2px solid #ccc; opacity: 0.6;" onclick="openThemedModal('<?php echo $row['slot_number']; ?>', '<?php echo $timeline_data; ?>', '<?php echo intval($row['parking_id']); ?>', '<?php echo $clean_status; ?>')">
                         <i class="fa-solid fa-car" style="font-size: 1.8rem; color: #999;"></i>
                         <small style="font-weight:bold;"><?php echo htmlspecialchars($row['slot_number']); ?></small>
-                        <small style="color: #ef4444; font-weight: bold;"><?php echo htmlspecialchars($clean_status); ?></small>
+                        <small style="color: #ef4444; font-weight: bold;">PENALIZED</small>
                     </div>
         <?php 
                 endif; 
@@ -333,7 +333,7 @@ function openThemedModal(slotNumber, reservedTimelines, parkingId, rawStatus) {
     
     document.getElementById('modalSlotNo').innerText = slotNumber;
     
-    if (rawStatus === 'PENALIZED' || rawStatus === 'OCCUPIED') {
+    if (rawStatus === 'PENALIZED' || rawStatus === 'PENALTY') {
         timelineContainer.innerHTML = `<span style="color:#ef4444; font-weight:bold;"><i class="fa-solid fa-circle-xmark"></i> Locked by Admin (${rawStatus})</span>`;
         confirmBtn.className = "modal-btn btn-blocked";
         confirmBtn.innerText = "Blocked";
