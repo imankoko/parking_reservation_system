@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <widget id="com.summit.parking" version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
-    <name>ParkingSystem</name>
+    <name>Parking Reservation System for The Summit Batu Pahat</name>
     <description>
         Parking Reservation System for The Summit Batu Pahat.
     </description>
@@ -9,6 +9,8 @@
     </author>
     
     <content src="index.html" />
+    
+    <icon src="www/img/logo.png" />
     
     <access origin="*" />
     <allow-navigation href="*" />
@@ -19,5 +21,9 @@
     <platform name="android">
         <preference name="AllowInlineMediaPlayback" value="true" />
         <preference name="CleartextTrafficPermitted" value="true" />
+        
+        <preference name="SplashScreen" value="screen" />
+        <preference name="AutoHideSplashScreen" value="true" />
+        <preference name="SplashScreenDelay" value="2000" /> <resource-file src="www/img/logo.png" target="app/src/main/res/drawable/screen.png" />
     </platform>
 </widget>
