@@ -316,10 +316,6 @@ function openThemedModal(slotNumber, reservedTimelines, parkingId) {
     modal.style.display = 'flex';
 }
 
-function closeModal('customParkingModal') {
-    document.getElementById('customParkingModal').style.display = 'none';
-}
-
 function closeThemedModal() {
     document.getElementById('customParkingModal').style.display = 'none';
 }
