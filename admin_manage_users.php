@@ -44,12 +44,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         } elseif ($action === 'delete_user') {
+            // --- CASCADING DELETION CORE ENGINE ---
+            // Step 1: Drop all bookings made by this user (if they are a driver)
             pg_query_params($conn, "DELETE FROM tbl_booking WHERE user_id = $1", array($target_user_id));
+            
+            // Step 2: Drop bookings linked to any parking slots owned by this user (if they are a lister)
+            pg_query_params($conn, "DELETE FROM tbl_booking WHERE parking_id IN (SELECT parking_id FROM tbl_parking_listing WHERE lister_id = $1)", array($target_user_id));
+            
+            // Step 3: Drop all physical slots created by this lister user
+            pg_query_params($conn, "DELETE FROM tbl_parking_listing WHERE lister_id = $1", array($target_user_id));
+            
+            // Step 4: Safely drop the user record with no foreign key constraint violations
             $del_query = "DELETE FROM tbl_user WHERE user_id = $1";
             $res = pg_query_params($conn, $del_query, array($target_user_id));
+            
             if ($res) {
-                $alert_message = "Account database entry dropped successfully.";
+                $alert_message = "Account database entry and all associated listings/bookings dropped successfully.";
                 $alert_type = "success";
+            } else {
+                $alert_message = "Error dropping user entry from table.";
+                $alert_type = "error";
             }
         }
     }
