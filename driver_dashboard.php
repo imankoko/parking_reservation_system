@@ -60,6 +60,7 @@ if (isset($_POST['terminate_booking']) && !empty($_POST['booking_id'])) {
 
 // 2. FETCH ENGINE: Uses localized relative intervals to sync state dynamically
 $booking_query = "SELECT b.booking_id, p.parking_id, p.slot_number, b.start_time, b.end_time, b.booking_date, p.status as slot_status, b.booking_status,
+                  p.location, p.branch,
                   TO_CHAR(b.booking_date, 'YYYY-MM-DD') AS clean_date,
                   TO_CHAR(b.start_time, 'HH24:MI:SS') AS clean_start_time,
                   TO_CHAR(b.end_time, 'HH24:MI:SS') AS clean_end_time,
@@ -123,6 +124,22 @@ if ($latest_booking) {
         .timer-active { border-color: #2ecc71 !important; }  
         .timer-danger { border-color: #e74c3c !important; background: #5a1212 !important; animation: pulse 0.8s infinite; }
         @keyframes pulse { 0%{transform:scale(1);}50%{transform:scale(1.05);}100%{transform:scale(1);} }
+
+        /* DYNAMIC NOTIFICATION SYSTEM CONTAINER STYLES */
+        .system-notification-container {
+            margin: 15px; padding: 15px 20px; border-radius: 14px;
+            display: flex; align-items: center; gap: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            transition: all 0.3s ease;
+        }
+        .notif-info { background: #f0fdf4; border-left: 5px solid #2ecc71; color: #166534; }
+        .notif-warning { background: #fffbeb; border-left: 5px solid #f1c40f; color: #92400e; }
+        .notif-vacant { background: #f8fafc; border-left: 5px solid #94a3b8; color: #475569; }
+        
+        .notif-bell-box { font-size: 1.5rem; display: flex; align-items: center; justify-content: center; }
+        .notif-text-box { flex: 1; }
+        .notif-title { font-weight: bold; font-size: 0.95rem; margin-bottom: 3px; }
+        .notif-desc { font-size: 0.82rem; opacity: 0.9; }
 
         .alert-msg { background: #e67e22; color: white; text-align: center; padding: 12px; margin: 15px; border-radius: 12px; font-size: 0.9em; font-weight: bold; }
         .search-area { text-align: center; margin: 25px 0; }
@@ -258,6 +275,34 @@ if ($latest_booking) {
             <?php endif; ?>
         </div>
     </div>
+
+    <?php if ($latest_booking): ?>
+        <?php if ($time_until_start > 0): ?>
+            <div class="system-notification-container notif-warning">
+                <div class="notif-bell-box"><i class="fa-solid fa-bell-ring fa-bounce" style="color: #d97706;"></i></div>
+                <div class="notif-text-box">
+                    <div class="notif-title">Upcoming Reservation Pending</div>
+                    <div class="notif-desc">Your reservation for Slot <strong><?php echo htmlspecialchars($latest_booking['slot_number']); ?></strong> (<?php echo htmlspecialchars($latest_booking['location']); ?>) starts shortly. Please arrive on time.</div>
+                </div>
+            </div>
+        <?php else: ?>
+            <div class="system-notification-container notif-info">
+                <div class="notif-bell-box"><i class="fa-solid fa-square-parking fa-spin" style="color: #16a34a; --fa-animation-duration: 3s;"></i></div>
+                <div class="notif-text-box">
+                    <div class="notif-title">Active Reservation In Progress</div>
+                    <div class="notif-desc">You are parked at <strong>Slot <?php echo htmlspecialchars($latest_booking['slot_number']); ?></strong>. Your session completes at <strong><?php echo date('h:i A', strtotime($latest_booking['clean_end_time'])); ?></strong>.</div>
+                </div>
+            </div>
+        <?php endif; ?>
+    <?php else: ?>
+        <div class="system-notification-container notif-vacant">
+            <div class="notif-bell-box"><i class="fa-solid fa-circle-info" style="color: #64748b;"></i></div>
+            <div class="notif-text-box">
+                <div class="notif-title">No Active Parking Bookings</div>
+                <div class="notif-desc">Need a spot? Tap the search button below to secure a dynamic time slot at The Summit Mall, Batu Pahat instantly.</div>
+            </div>
+        </div>
+    <?php endif; ?>
 
     <?php if ($latest_booking): ?>
     <div class="qr-modal-overlay" id="qrOverlay" onclick="closeQRModal()">
