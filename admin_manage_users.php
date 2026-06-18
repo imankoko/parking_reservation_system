@@ -44,22 +44,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         } elseif ($action === 'delete_user') {
-            // --- CASCADING DELETION CORE ENGINE ---
-            // Step 1: Drop all bookings made by this user (if they are a driver)
+            // --- FULL MASTER CASCADING RELATION RESET ENGINE ---
+            
+            // Step 1: Drop reviews linked to bookings made by this user (Driver Context)
+            pg_query_params($conn, "DELETE FROM tbl_reviews WHERE booking_id IN (SELECT booking_id FROM tbl_booking WHERE user_id = $1)", array($target_user_id));
+            
+            // Step 2: Drop reviews linked to bookings on any slots owned by this user (Lister Context)
+            pg_query_params($conn, "DELETE FROM tbl_reviews WHERE booking_id IN (SELECT b.booking_id FROM tbl_booking b JOIN tbl_parking_listing pl ON b.parking_id = pl.parking_id WHERE pl.lister_id = $1)", array($target_user_id));
+
+            // Step 3: Clear bookings created by this user
             pg_query_params($conn, "DELETE FROM tbl_booking WHERE user_id = $1", array($target_user_id));
             
-            // Step 2: Drop bookings linked to any parking slots owned by this user (if they are a lister)
+            // Step 4: Clear bookings linked to any parking slots owned by this user
             pg_query_params($conn, "DELETE FROM tbl_booking WHERE parking_id IN (SELECT parking_id FROM tbl_parking_listing WHERE lister_id = $1)", array($target_user_id));
             
-            // Step 3: Drop all physical slots created by this lister user
+            // Step 5: Clear physical slots created by this user
             pg_query_params($conn, "DELETE FROM tbl_parking_listing WHERE lister_id = $1", array($target_user_id));
             
-            // Step 4: Safely drop the user record with no foreign key constraint violations
+            // Step 6: Finally drop the root user account entry
             $del_query = "DELETE FROM tbl_user WHERE user_id = $1";
             $res = pg_query_params($conn, $del_query, array($target_user_id));
             
             if ($res) {
-                $alert_message = "Account database entry and all associated listings/bookings dropped successfully.";
+                $alert_message = "Account database entry and all associated records dropped successfully.";
                 $alert_type = "success";
             } else {
                 $alert_message = "Error dropping user entry from table.";
